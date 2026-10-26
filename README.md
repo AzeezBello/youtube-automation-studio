@@ -19,20 +19,21 @@ A self-contained desktop platform that combines:
 
 **Principles:** Local-first · No mandatory vidIQ or paid AI subscription · Explicit user approval for publishing · Policy-compliant YouTube data handling · Working software from day one.
 
-## Current Milestone (P0 – Foundation)
+## Current Milestone (P3 – Local AI)
 
 - [x] Project skeleton & dependency configuration
 - [x] SQLite schema + Alembic migrations
 - [x] Multi-channel profile support
-- [x] Persistent job queue interfaces
-- [x] FFmpeg detection service
-- [x] Research provider contracts
-- [x] Basic PySide6 desktop shell + navigation
-- [x] Unit / integration test scaffolding
-- [ ] Full music library scanner (P1)
-- [ ] Audio mixing + video rendering pipeline (P1)
-- [ ] Research workspace UI (P2)
-- [ ] Local AI integration (P3)
+- [x] Persistent job queue interfaces + stage recovery
+- [x] FFmpeg detection & hardware benchmark service
+- [x] Secure credential vault (`keyring` + fallback)
+- [x] Research provider contracts + Quota-aware YouTube Data API v3 adapter (P2)
+- [x] Basic PySide6 desktop shell + Music Library, Production, Research & Artwork/AI workspaces (P1–P3)
+- [x] Full music library scanner + duplicate & waveform/fingerprint detection (P1)
+- [x] Audio mixing + thumbnail layout + video rendering + output validation pipeline (P1)
+- [x] Research workspace UI, topic clustering, competitor watchlist, 30-day retention purge, and Saved Ideas → Production hand-off (P2)
+- [x] Local AI model registry, hardware compatibility check, LM/template metadata generation, and optional diffusion/procedural artwork generation (P3)
+- [x] Unit / integration test suite
 - [ ] OAuth + Analytics + Uploads (P4)
 
 ## Quick Start
@@ -47,10 +48,9 @@ A self-contained desktop platform that combines:
 
 ```bash
 cd youtube-automation-studio
-python3 -m venv .venv
+python3 -m venv --upgrade-deps .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-python3 -m pip install --upgrade pip setuptools wheel
-pip install -e ".[dev]"
+pip install --no-build-isolation -e ".[dev]"
 ```
 
 ### Database

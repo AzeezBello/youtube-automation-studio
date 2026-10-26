@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+import os
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Optional
-
-from pydantic import Field
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ResourceProfile(str, Enum):
@@ -16,54 +15,98 @@ class ResourceProfile(str, Enum):
     HIGH_PERFORMANCE = "high_performance"
 
 
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="YAS_",
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
+try:
+    from pydantic_settings import BaseSettings, SettingsConfigDict
 
-    # Application identity
-    app_name: str = "YouTube Automation Studio"
-    app_version: str = "0.1.0"
+    class Settings(BaseSettings):  # type: ignore[no-redef]
+        model_config = SettingsConfigDict(
+            env_prefix="YAS_",
+            env_file=".env",
+            env_file_encoding="utf-8",
+            extra="ignore",
+        )
 
-    # Paths (overridable)
-    data_dir: Optional[Path] = None
-    database_name: str = "youtube_studio.db"
-    ffmpeg_path: Optional[Path] = None
-    ffprobe_path: Optional[Path] = None
-    models_dir: Optional[Path] = None
-    default_output_root: Optional[Path] = None
+        # Application identity
+        app_name: str = "YouTube Automation Studio"
+        app_version: str = "0.1.0"
 
-    # Runtime
-    resource_profile: ResourceProfile = ResourceProfile.BALANCED
-    max_concurrent_jobs: int = 2
-    log_level: str = "INFO"
+        # Paths (overridable)
+        data_dir: Optional[Path] = None
+        database_name: str = "youtube_studio.db"
+        ffmpeg_path: Optional[Path] = None
+        ffprobe_path: Optional[Path] = None
+        models_dir: Optional[Path] = None
+        default_output_root: Optional[Path] = None
 
-    # Feature flags
-    enable_cloud_ai: bool = False
-    enable_local_image_gen: bool = False
+        # Runtime
+        resource_profile: ResourceProfile = ResourceProfile.BALANCED
+        max_concurrent_jobs: int = 2
+        log_level: str = "INFO"
 
-    def resolved_data_dir(self) -> Path:
-        if self.data_dir is not None:
-            return self.data_dir.expanduser().resolve()
-        # Platform-agnostic default under user home
-        return (Path.home() / ".youtube_automation_studio").resolve()
+        # Feature flags
+        enable_cloud_ai: bool = False
+        enable_local_image_gen: bool = False
 
-    def database_path(self) -> Path:
-        return self.resolved_data_dir() / self.database_name
+        def resolved_data_dir(self) -> Path:
+            if self.data_dir is not None:
+                return self.data_dir.expanduser().resolve()
+            return (Path.home() / ".youtube_automation_studio").resolve()
 
-    def ensure_directories(self) -> None:
-        base = self.resolved_data_dir()
-        (base / "logs").mkdir(parents=True, exist_ok=True)
-        (base / "assets").mkdir(parents=True, exist_ok=True)
-        (base / "jobs").mkdir(parents=True, exist_ok=True)
-        (base / "backups").mkdir(parents=True, exist_ok=True)
-        if self.models_dir:
-            self.models_dir.mkdir(parents=True, exist_ok=True)
-        if self.default_output_root:
-            self.default_output_root.mkdir(parents=True, exist_ok=True)
+        def database_path(self) -> Path:
+            return self.resolved_data_dir() / self.database_name
+
+        def ensure_directories(self) -> None:
+            base = self.resolved_data_dir()
+            (base / "logs").mkdir(parents=True, exist_ok=True)
+            (base / "assets").mkdir(parents=True, exist_ok=True)
+            (base / "jobs").mkdir(parents=True, exist_ok=True)
+            (base / "backups").mkdir(parents=True, exist_ok=True)
+            if self.models_dir:
+                self.models_dir.mkdir(parents=True, exist_ok=True)
+            if self.default_output_root:
+                self.default_output_root.mkdir(parents=True, exist_ok=True)
+
+except ImportError:
+
+    @dataclass
+    class Settings:  # type: ignore[no-redef]
+        app_name: str = "YouTube Automation Studio"
+        app_version: str = "0.1.0"
+        data_dir: Optional[Path] = None
+        database_name: str = "youtube_studio.db"
+        ffmpeg_path: Optional[Path] = None
+        ffprobe_path: Optional[Path] = None
+        models_dir: Optional[Path] = None
+        default_output_root: Optional[Path] = None
+        resource_profile: ResourceProfile = ResourceProfile.BALANCED
+        max_concurrent_jobs: int = 2
+        log_level: str = "INFO"
+        enable_cloud_ai: bool = False
+        enable_local_image_gen: bool = False
+
+        def __post_init__(self) -> None:
+            env_data_dir = os.environ.get("YAS_DATA_DIR")
+            if env_data_dir and self.data_dir is None:
+                self.data_dir = Path(env_data_dir)
+
+        def resolved_data_dir(self) -> Path:
+            if self.data_dir is not None:
+                return self.data_dir.expanduser().resolve()
+            return (Path.home() / ".youtube_automation_studio").resolve()
+
+        def database_path(self) -> Path:
+            return self.resolved_data_dir() / self.database_name
+
+        def ensure_directories(self) -> None:
+            base = self.resolved_data_dir()
+            (base / "logs").mkdir(parents=True, exist_ok=True)
+            (base / "assets").mkdir(parents=True, exist_ok=True)
+            (base / "jobs").mkdir(parents=True, exist_ok=True)
+            (base / "backups").mkdir(parents=True, exist_ok=True)
+            if self.models_dir:
+                self.models_dir.mkdir(parents=True, exist_ok=True)
+            if self.default_output_root:
+                self.default_output_root.mkdir(parents=True, exist_ok=True)
 
 
 def get_settings() -> Settings:

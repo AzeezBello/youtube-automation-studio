@@ -1,0 +1,454 @@
+"""Research Workspace UI page – keyword discovery, topic clustering, watchlist, ideas & hand-off."""
+
+from __future__ import annotations
+
+from typing import Optional
+
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QComboBox,
+    QGroupBox,
+    QHBoxLayout,
+    QHeaderView,
+    QInputDialog,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPlainTextEdit,
+    QPushButton,
+    QTableWidget,
+    QTableWidgetItem,
+    QVBoxLayout,
+    QWidget,
+)
+
+from youtube_studio.domain.models.project import ProjectType
+from youtube_studio.domain.services import ChannelService, ResearchService
+from youtube_studio.jobs import RetentionJobRunner
+from youtube_studio.research import (
+    QuotaTracker,
+    ResearchResult,
+    StubResearchProvider,
+    TopicClusterer,
+    YouTubeDataAPIProvider,
+)
+from youtube_studio.security import CredentialVault
+from youtube_studio.storage import session_scope
+
+
+class ResearchPage(QWidget):
+    """Interactive P2 research workspace with provenance tracking, clustering, watchlist, and production hand-off."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._vault = CredentialVault()
+        self._quota = QuotaTracker()
+        self._stub_provider = StubResearchProvider()
+        self._yt_provider = YouTubeDataAPIProvider(vault=self._vault, quota_tracker=self._quota)
+        self._clusterer = TopicClusterer()
+
+        self._channel_ids: list[str] = []
+        self._research_project_ids: list[str] = []
+        self._idea_ids: list[str] = []
+        self._current_results: list[tuple[str, ResearchResult]] = []
+
+        self._build_ui()
+        self.refresh()
+
+    def _build_ui(self) -> None:
+        root = QVBoxLayout(self)
+
+        heading = QLabel("Research Workspace")
+        heading.setFont(QFont("", 18, QFont.Weight.Bold))
+        root.addWidget(heading)
+
+        # Top selector row: Channel + Research Project + Retention Cleanup
+        top_row = QHBoxLayout()
+        top_row.addWidget(QLabel("Channel:"))
+        self.channel_combo = QComboBox()
+        self.channel_combo.currentIndexChanged.connect(self._on_channel_changed)
+        top_row.addWidget(self.channel_combo, stretch=1)
+
+        top_row.addWidget(QLabel("Research Project:"))
+        self.project_combo = QComboBox()
+        self.project_combo.currentIndexChanged.connect(self._on_project_changed)
+        top_row.addWidget(self.project_combo, stretch=1)
+
+        new_proj_btn = QPushButton("+ Research Project")
+        new_proj_btn.clicked.connect(self._on_new_research_project)
+        top_row.addWidget(new_proj_btn)
+
+        purge_btn = QPushButton("Purge Expired API Data (≤30d)")
+        purge_btn.clicked.connect(self._on_purge_expired)
+        top_row.addWidget(purge_btn)
+
+        root.addLayout(top_row)
+
+        # Main split: Left = Search + Topic Clustering, Right = Notes + Watchlist + Ideas
+        body = QHBoxLayout()
+
+        # Left column
+        left_col = QVBoxLayout()
+        search_row = QHBoxLayout()
+        self.provider_combo = QComboBox()
+        self.provider_combo.addItems(["Stub Provider (Offline)", "YouTube Data API v3"])
+        search_row.addWidget(self.provider_combo)
+
+        self.query_input = QLineEdit()
+        self.query_input.setPlaceholderText("Enter keyword or topic query (e.g. roots reggae dub mix)…")
+        search_row.addWidget(self.query_input, stretch=1)
+
+        search_btn = QPushButton("Search & Cluster")
+        search_btn.clicked.connect(self._on_search)
+        search_row.addWidget(search_btn)
+
+        left_col.addLayout(search_row)
+
+        self.quota_label = QLabel()
+        self.quota_label.setStyleSheet("color: #aaa;")
+        left_col.addWidget(self.quota_label)
+
+        self.results_table = QTableWidget(0, 6)
+        self.results_table.setHorizontalHeaderLabels(
+            ["Topic Cluster", "Title", "Channel", "Provider", "Retention", "Expires"]
+        )
+        self.results_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        left_col.addWidget(self.results_table, stretch=1)
+
+        save_from_result_btn = QPushButton("Save Selected Result as Idea…")
+        save_from_result_btn.clicked.connect(self._on_save_result_as_idea)
+        left_col.addWidget(save_from_result_btn)
+
+        body.addLayout(left_col, stretch=3)
+
+        # Right column: Brief Notes + Competitor Watchlist + Saved Ideas -> Production Hand-Off
+        right_col = QVBoxLayout()
+
+        # 1. Research Brief & Notes
+        brief_group = QGroupBox("Research Brief & Notes")
+        brief_layout = QVBoxLayout(brief_group)
+        self.brief_edit = QPlainTextEdit()
+        self.brief_edit.setPlaceholderText("Document research themes, audience notes, and production angles…")
+        brief_layout.addWidget(self.brief_edit)
+        save_brief_btn = QPushButton("Save Brief Notes")
+        save_brief_btn.clicked.connect(self._on_save_brief)
+        brief_layout.addWidget(save_brief_btn)
+        right_col.addWidget(brief_group, stretch=1)
+
+        # 2. Competitor Watchlist (Public metadata only)
+        watch_group = QGroupBox("Competitor Watchlist (Public Metadata · ≤30d TTL)")
+        watch_layout = QVBoxLayout(watch_group)
+        self.watchlist_table = QTableWidget(0, 3)
+        self.watchlist_table.setHorizontalHeaderLabels(["Channel Title", "ID / Handle", "Expires At"])
+        self.watchlist_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.watchlist_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        watch_layout.addWidget(self.watchlist_table)
+        add_watch_btn = QPushButton("+ Add Public Channel to Watchlist")
+        add_watch_btn.clicked.connect(self._on_add_watchlist)
+        watch_layout.addWidget(add_watch_btn)
+        right_col.addWidget(watch_group, stretch=1)
+
+        # 3. Saved Ideas & Production Hand-Off
+        ideas_group = QGroupBox("Saved Ideas → Production Hand-Off")
+        ideas_layout = QVBoxLayout(ideas_group)
+        self.ideas_table = QTableWidget(0, 3)
+        self.ideas_table.setHorizontalHeaderLabels(["Idea Title", "Status", "Rationale"])
+        self.ideas_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.ideas_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.ideas_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        ideas_layout.addWidget(self.ideas_table)
+
+        idea_btns = QHBoxLayout()
+        new_idea_btn = QPushButton("+ New Idea")
+        new_idea_btn.clicked.connect(self._on_new_idea)
+        idea_btns.addWidget(new_idea_btn)
+
+        handoff_btn = QPushButton("Hand Off to Production →")
+        handoff_btn.setStyleSheet("font-weight: bold;")
+        handoff_btn.clicked.connect(self._on_handoff_to_production)
+        idea_btns.addWidget(handoff_btn)
+
+        ideas_layout.addLayout(idea_btns)
+        right_col.addWidget(ideas_group, stretch=1)
+
+        body.addLayout(right_col, stretch=2)
+        root.addLayout(body, stretch=1)
+
+    def refresh(self) -> None:
+        self._update_quota_label()
+        try:
+            with session_scope() as session:
+                channels = ChannelService(session).list_active()
+        except Exception:
+            return
+
+        prev_ch = self.current_channel_id()
+        self.channel_combo.blockSignals(True)
+        self.channel_combo.clear()
+        self._channel_ids = []
+        for ch in channels:
+            self.channel_combo.addItem(ch.name)
+            self._channel_ids.append(ch.id)
+        if prev_ch in self._channel_ids:
+            self.channel_combo.setCurrentIndex(self._channel_ids.index(prev_ch))
+        self.channel_combo.blockSignals(False)
+        self._reload_research_projects()
+
+    def current_channel_id(self) -> Optional[str]:
+        idx = self.channel_combo.currentIndex()
+        if 0 <= idx < len(self._channel_ids):
+            return self._channel_ids[idx]
+        return None
+
+    def current_research_project_id(self) -> Optional[str]:
+        idx = self.project_combo.currentIndex()
+        if 0 <= idx < len(self._research_project_ids):
+            return self._research_project_ids[idx]
+        return None
+
+    def _update_quota_label(self) -> None:
+        self.quota_label.setText(
+            f"YouTube API Daily Quota: {self._quota.used_units} / {self._quota.daily_budget} units used "
+            f"({self._quota.remaining_units} remaining)"
+        )
+
+    def _on_channel_changed(self, _index: int) -> None:
+        self._reload_research_projects()
+
+    def _reload_research_projects(self) -> None:
+        channel_id = self.current_channel_id()
+        prev_rp = self.current_research_project_id()
+        self.project_combo.blockSignals(True)
+        self.project_combo.clear()
+        self._research_project_ids = []
+        if channel_id:
+            with session_scope() as session:
+                projects = ResearchService(session).list_research_projects(channel_id=channel_id)
+            for rp in projects:
+                self.project_combo.addItem(rp.name)
+                self._research_project_ids.append(rp.id)
+            if prev_rp in self._research_project_ids:
+                self.project_combo.setCurrentIndex(self._research_project_ids.index(prev_rp))
+        self.project_combo.blockSignals(False)
+        self._reload_project_details()
+
+    def _on_project_changed(self, _index: int) -> None:
+        self._reload_project_details()
+
+    def _reload_project_details(self) -> None:
+        rp_id = self.current_research_project_id()
+        channel_id = self.current_channel_id()
+        self.brief_edit.setPlainText("")
+        self.watchlist_table.setRowCount(0)
+        self.ideas_table.setRowCount(0)
+        self._idea_ids = []
+
+        with session_scope() as session:
+            svc = ResearchService(session)
+            if rp_id:
+                rp = svc.get_research_project(rp_id)
+                if rp and rp.brief:
+                    self.brief_edit.setPlainText(rp.brief)
+            watchlist = svc.list_watchlist(research_project_id=rp_id)
+            ideas = svc.list_ideas(channel_id=channel_id, research_project_id=rp_id)
+
+        self.watchlist_table.setRowCount(len(watchlist))
+        for idx, w in enumerate(watchlist):
+            exp_str = w.expires_at.strftime("%Y-%m-%d") if w.expires_at else "—"
+            self.watchlist_table.setItem(idx, 0, QTableWidgetItem(w.title))
+            self.watchlist_table.setItem(
+                idx, 1, QTableWidgetItem(w.custom_url or w.channel_external_id)
+            )
+            self.watchlist_table.setItem(idx, 2, QTableWidgetItem(exp_str))
+
+        self.ideas_table.setRowCount(len(ideas))
+        for idx, idea in enumerate(ideas):
+            self._idea_ids.append(idea.id)
+            self.ideas_table.setItem(idx, 0, QTableWidgetItem(idea.title))
+            self.ideas_table.setItem(idx, 1, QTableWidgetItem(idea.status))
+            self.ideas_table.setItem(idx, 2, QTableWidgetItem(idea.rationale or ""))
+
+    def _on_new_research_project(self) -> None:
+        channel_id = self.current_channel_id()
+        if not channel_id:
+            QMessageBox.warning(self, "Research Project", "Please create or select a channel first.")
+            return
+        name, ok = QInputDialog.getText(self, "New Research Project", "Research project name:")
+        if not ok or not name.strip():
+            return
+        with session_scope() as session:
+            ResearchService(session).create_research_project(name.strip(), channel_id=channel_id)
+        self._reload_research_projects()
+
+    def _on_save_brief(self) -> None:
+        rp_id = self.current_research_project_id()
+        if not rp_id:
+            QMessageBox.warning(self, "Save Brief", "Please create or select a research project first.")
+            return
+        with session_scope() as session:
+            ResearchService(session).update_research_project(
+                rp_id,
+                brief=self.brief_edit.toPlainText().strip(),
+            )
+        QMessageBox.information(self, "Saved", "Research brief notes updated.")
+
+    def _on_search(self) -> None:
+        query = self.query_input.text().strip()
+        if not query:
+            QMessageBox.warning(self, "Search", "Please enter a search query.")
+            return
+        use_yt = self.provider_combo.currentIndex() == 1
+        provider = self._yt_provider if use_yt else self._stub_provider
+        rp_id = self.current_research_project_id()
+
+        try:
+            results = provider.search(query, max_results=15)
+            clusters = self._clusterer.cluster(results)
+            with session_scope() as session:
+                svc = ResearchService(session)
+                for r in results:
+                    svc.record_source(r, research_project_id=rp_id)
+        except Exception as exc:
+            QMessageBox.critical(self, "Search Failed", str(exc))
+            return
+
+        self._update_quota_label()
+        self._current_results = []
+        for cluster in clusters:
+            for r in cluster.results:
+                self._current_results.append((cluster.label, r))
+
+        self.results_table.setRowCount(len(self._current_results))
+        for row_idx, (cluster_label, r) in enumerate(self._current_results):
+            exp = r.expires_at()
+            exp_str = exp.strftime("%Y-%m-%d") if exp else "—"
+            self.results_table.setItem(row_idx, 0, QTableWidgetItem(cluster_label))
+            self.results_table.setItem(
+                row_idx, 1, QTableWidgetItem(str(r.payload.get("title", "")))
+            )
+            self.results_table.setItem(
+                row_idx, 2, QTableWidgetItem(str(r.payload.get("channel_title", "")))
+            )
+            self.results_table.setItem(row_idx, 3, QTableWidgetItem(r.provider))
+            self.results_table.setItem(row_idx, 4, QTableWidgetItem(r.retention_class.value))
+            self.results_table.setItem(row_idx, 5, QTableWidgetItem(exp_str))
+
+    def _on_save_result_as_idea(self) -> None:
+        row = self.results_table.currentRow()
+        if row < 0 or row >= len(self._current_results):
+            QMessageBox.warning(self, "Save Idea", "Select a search result row first.")
+            return
+        cluster_label, res = self._current_results[row]
+        default_title = str(res.payload.get("title", "New Video Idea"))
+        title, ok = QInputDialog.getText(
+            self, "Save Idea", "Idea title:", text=default_title
+        )
+        if not ok or not title.strip():
+            return
+        rationale, ok_r = QInputDialog.getText(
+            self,
+            "Idea Rationale",
+            "Why this topic works:",
+            text=f"Cluster: {cluster_label} | Source: {res.external_reference or res.provider}",
+        )
+        if not ok_r:
+            return
+        with session_scope() as session:
+            ResearchService(session).save_idea(
+                title.strip(),
+                channel_id=self.current_channel_id(),
+                research_project_id=self.current_research_project_id(),
+                rationale=rationale.strip(),
+                evidence=[
+                    {
+                        "provider": res.provider,
+                        "external_reference": res.external_reference,
+                        "cluster": cluster_label,
+                    }
+                ],
+            )
+        self._reload_project_details()
+
+    def _on_add_watchlist(self) -> None:
+        ch_ext_id, ok = QInputDialog.getText(
+            self, "Add Watchlist Channel", "YouTube Channel ID or handle:"
+        )
+        if not ok or not ch_ext_id.strip():
+            return
+        title, ok_t = QInputDialog.getText(
+            self, "Add Watchlist Channel", "Public Channel Title:"
+        )
+        if not ok_t or not title.strip():
+            return
+        with session_scope() as session:
+            ResearchService(session).add_to_watchlist(
+                ch_ext_id.strip(),
+                title.strip(),
+                research_project_id=self.current_research_project_id(),
+            )
+        self._reload_project_details()
+
+    def _on_new_idea(self) -> None:
+        title, ok = QInputDialog.getText(self, "New Idea", "Idea title:")
+        if not ok or not title.strip():
+            return
+        rationale, ok_r = QInputDialog.getText(self, "New Idea", "Rationale / angle:")
+        if not ok_r:
+            return
+        with session_scope() as session:
+            ResearchService(session).save_idea(
+                title.strip(),
+                channel_id=self.current_channel_id(),
+                research_project_id=self.current_research_project_id(),
+                rationale=rationale.strip(),
+            )
+        self._reload_project_details()
+
+    def _on_handoff_to_production(self) -> None:
+        row = self.ideas_table.currentRow()
+        if row < 0 or row >= len(self._idea_ids):
+            QMessageBox.warning(self, "Hand Off", "Please select a saved idea first.")
+            return
+        channel_id = self.current_channel_id()
+        if not channel_id:
+            QMessageBox.warning(self, "Hand Off", "Please select a target channel first.")
+            return
+        idea_id = self._idea_ids[row]
+        types = [t.value for t in ProjectType]
+        chosen, ok = QInputDialog.getItem(
+            self, "Hand Off to Production", "Select production project type:", types, 1, False
+        )
+        if not ok:
+            return
+
+        try:
+            with session_scope() as session:
+                prod_project, draft = ResearchService(session).handoff_idea_to_production(
+                    idea_id,
+                    channel_id=channel_id,
+                    project_type=ProjectType(chosen),
+                )
+            self._reload_project_details()
+            QMessageBox.information(
+                self,
+                "Hand-Off Complete",
+                f"Created Production Project '{prod_project.name}' ({prod_project.id})\n"
+                f"with initial Metadata Draft v{draft.version} and tags: {', '.join(draft.tags)}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Hand-Off Failed", str(exc))
+
+    def _on_purge_expired(self) -> None:
+        try:
+            with session_scope() as session:
+                _, purged_count = RetentionJobRunner(session).run_cleanup()
+            self._reload_project_details()
+            QMessageBox.information(
+                self,
+                "Retention Cleanup",
+                f"Purged {purged_count} expired research source record(s) per 30-day API retention policy.",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Retention Cleanup Failed", str(exc))

@@ -2,7 +2,7 @@
 
 Aligned with PRD §8.
 
-## P0 – Foundation (current)
+## P0 – Foundation (completed)
 
 - [x] Repository skeleton & `pyproject.toml`
 - [x] SQLite schema + Alembic migration `001`
@@ -12,36 +12,36 @@ Aligned with PRD §8.
 - [x] Research provider contracts + Stub provider
 - [x] PySide6 main window + navigation shell
 - [x] Unit test scaffolding
-- [ ] Local hardware benchmark script
-- [ ] Secure credential vault stub
+- [x] Local hardware benchmark script
+- [x] Secure credential vault stub
 
-## P1 – Music-to-video production
+## P1 – Music-to-video production (completed)
 
-- [ ] Recursive media library scanner (MP3/WAV/FLAC)
-- [ ] Waveform / fingerprint generation
-- [ ] Track ordering, trim, gain, crossfade editor
-- [ ] Audio mix pipeline (FFmpeg)
-- [ ] Single-track + multi-track video renderer
-- [ ] Thumbnail layout engine (Pillow)
-- [ ] Output validation (duration, codec, streams)
-- [ ] Job stage recovery & intermediate reuse
+- [x] Recursive media library scanner (MP3/WAV/FLAC)
+- [x] Waveform / fingerprint generation
+- [x] Track ordering, trim, gain, crossfade editor
+- [x] Audio mix pipeline (FFmpeg + PCM WAV fallback)
+- [x] Single-track + multi-track video renderer
+- [x] Thumbnail layout engine (Pillow + PNG fallback)
+- [x] Output validation (duration, codec, streams)
+- [x] Job stage recovery & intermediate reuse
 
-## P2 – Research workspace
+## P2 – Research workspace (completed)
 
-- [ ] YouTube Data API search adapter (quota-aware)
-- [ ] Research project UI + notes
-- [ ] Retention enforcement job (public_api_30d)
-- [ ] Topic clustering (local embeddings)
-- [ ] Competitor watchlist (public metadata only)
-- [ ] Saved ideas → production brief hand-off
+- [x] YouTube Data API search adapter (quota-aware)
+- [x] Research project UI + notes
+- [x] Retention enforcement job (public_api_30d)
+- [x] Topic clustering (local embeddings / TF-IDF cosine)
+- [x] Competitor watchlist (public metadata only)
+- [x] Saved ideas → production brief hand-off
 
-## P3 – Local AI
+## P3 – Local AI (completed)
 
-- [ ] Hardware detection & model registry
-- [ ] Local instruction-following LM adapter
-- [ ] Title / description / tag generation
-- [ ] Optional local image generation
-- [ ] Template fallbacks when models unavailable
+- [x] Hardware detection & model registry
+- [x] Local instruction-following LM adapter
+- [x] Title / description / tag generation
+- [x] Optional local image generation
+- [x] Template fallbacks when models unavailable
 
 ## P4 – Analytics & publishing
 

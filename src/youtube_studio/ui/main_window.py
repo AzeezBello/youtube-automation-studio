@@ -14,16 +14,19 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QStackedWidget,
-    QStatusBar,
     QVBoxLayout,
     QWidget,
 )
 
 from youtube_studio import __version__
 from youtube_studio.config import get_settings
+from youtube_studio.domain.services import ChannelService, MediaLibraryService, ProjectService
 from youtube_studio.media import FFmpegService
 from youtube_studio.storage import session_scope
-from youtube_studio.domain.services import ChannelService
+from youtube_studio.ui.artwork_page import ArtworkPage
+from youtube_studio.ui.music_library_page import MusicLibraryPage
+from youtube_studio.ui.production_page import ProductionPage
+from youtube_studio.ui.research_page import ResearchPage
 
 
 class PlaceholderPage(QWidget):
@@ -66,17 +69,25 @@ class DashboardPage(QWidget):
         ]
         if info:
             lines.append(f"<b>FFmpeg:</b> {info.ffmpeg_version}")
-            lines.append(f"<b>Hardware acceleration:</b> {'available' if info.has_hwaccel else 'not detected'}")
+            lines.append(
+                f"<b>Hardware acceleration:</b> {'available' if info.has_hwaccel else 'not detected'}"
+            )
         else:
-            lines.append("<b>FFmpeg:</b> <span style='color:#e74c3c'>not found on PATH</span>")
+            lines.append(
+                "<b>FFmpeg:</b> <span style='color:#f39c12'>not found on PATH (WAV/fallback pipeline active)</span>"
+            )
 
         try:
             with session_scope() as session:
                 channels = ChannelService(session).list_active()
+                media_files = MediaLibraryService(session).list_media()
+                projects = ProjectService(session).list_projects()
             lines.append(f"<b>Active channels:</b> {len(channels)}")
             if channels:
                 names = ", ".join(c.name for c in channels[:5])
                 lines.append(f"&nbsp;&nbsp;{names}")
+            lines.append(f"<b>Indexed media files:</b> {len(media_files)}")
+            lines.append(f"<b>Production projects:</b> {len(projects)}")
         except Exception as exc:
             lines.append(f"<b>Database:</b> <span style='color:#e74c3c'>{exc}</span>")
 
@@ -126,23 +137,10 @@ class MainWindow(QMainWindow):
         self.stack = QStackedWidget()
         self.pages: dict[str, QWidget] = {
             "dashboard": DashboardPage(),
-            "research": PlaceholderPage(
-                "Research Workspace",
-                "Keyword discovery, competitor watchlists, and content briefs.\n"
-                "Public YouTube data is retained according to API policy (≤ 30 days).",
-            ),
-            "music_library": PlaceholderPage(
-                "Music Library",
-                "Scan folders, detect duplicates, build playlists, and prepare tracks for production.",
-            ),
-            "production": PlaceholderPage(
-                "Production",
-                "Single-track videos, DJ mixes, compilations, waveform visualizers, and render queue.",
-            ),
-            "artwork": PlaceholderPage(
-                "Artwork & Thumbnails",
-                "Local image generation (when hardware permits), templates, and approval workflow.",
-            ),
+            "research": ResearchPage(),
+            "music_library": MusicLibraryPage(),
+            "production": ProductionPage(),
+            "artwork": ArtworkPage(),
             "analytics": PlaceholderPage(
                 "Channel Analytics",
                 "Authorized YouTube Analytics reports only. No fabricated metrics.",
@@ -175,10 +173,10 @@ class MainWindow(QMainWindow):
     def _on_nav_changed(self, index: int) -> None:
         if 0 <= index < self.stack.count():
             self.stack.setCurrentIndex(index)
-            if index == 0:
-                dashboard = self.pages["dashboard"]
-                if isinstance(dashboard, DashboardPage):
-                    dashboard.refresh()
+            key = self.NAV_ITEMS[index][1]
+            page = self.pages.get(key)
+            if hasattr(page, "refresh"):
+                page.refresh()  # type: ignore[attr-defined]
 
     def _show_about(self) -> None:
         settings = get_settings()
