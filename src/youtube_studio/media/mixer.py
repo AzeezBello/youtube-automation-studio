@@ -190,7 +190,7 @@ class AudioMixerService:
         filtergraph = self.build_filter_complex(tracks, normalize_loudness=normalize_loudness)
         cmd = self.build_command(tracks, output_path, normalize_loudness=normalize_loudness)
 
-        if self._ffmpeg is not None:
+        if self._ffmpeg is not None and self._ffmpeg.exists():
             res = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if res.returncode == 0 and output_path.exists():
                 dur_ms = self.compute_expected_duration_ms(tracks)

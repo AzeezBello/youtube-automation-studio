@@ -1,3 +1,8 @@
+from .compliance_gate import (
+    ComplianceCheckItem,
+    ComplianceGateReport,
+    ComplianceReviewGate,
+)
 from .retention import (
     MAX_PUBLIC_API_RETENTION_DAYS,
     PROHIBITED_DERIVED_METRIC_KEYS,
@@ -6,6 +11,9 @@ from .retention import (
 )
 
 __all__ = [
+    "ComplianceCheckItem",
+    "ComplianceGateReport",
+    "ComplianceReviewGate",
     "ComplianceViolationError",
     "MAX_PUBLIC_API_RETENTION_DAYS",
     "PROHIBITED_DERIVED_METRIC_KEYS",

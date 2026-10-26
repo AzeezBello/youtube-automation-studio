@@ -27,6 +27,7 @@ from youtube_studio.ui.artwork_page import ArtworkPage
 from youtube_studio.ui.music_library_page import MusicLibraryPage
 from youtube_studio.ui.production_page import ProductionPage
 from youtube_studio.ui.research_page import ResearchPage
+from youtube_studio.ui.settings_page import SettingsPage
 
 
 class PlaceholderPage(QWidget):
@@ -139,10 +140,7 @@ class MainWindow(QMainWindow):
             "music_library": MusicLibraryPage(),
             "production": ProductionPage(),
             "artwork": ArtworkPage(),
-            "settings": PlaceholderPage(
-                "Settings",
-                "FFmpeg paths, model locations, resource profile, data directory, and credentials.",
-            ),
+            "settings": SettingsPage(),
         }
         for key, _ in self.NAV_ITEMS:
             self.stack.addWidget(self.pages[key])

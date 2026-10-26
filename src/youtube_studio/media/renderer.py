@@ -228,7 +228,7 @@ class VideoRendererService:
             srt_path = spec.output_path.with_suffix(".srt")
             self.write_now_playing_srt(spec.chapters, expected_dur, srt_path)
 
-        if self._ffmpeg is not None:
+        if self._ffmpeg is not None and self._ffmpeg.exists():
             res = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if res.returncode == 0 and spec.output_path.exists():
                 return RenderResult(

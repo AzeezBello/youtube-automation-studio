@@ -3,6 +3,7 @@ from .main_window import DashboardPage, MainWindow, PlaceholderPage
 from .music_library_page import MusicLibraryPage
 from .production_page import ProductionPage
 from .research_page import ResearchPage
+from .settings_page import SettingsPage
 
 __all__ = [
     "ArtworkPage",
@@ -12,4 +13,5 @@ __all__ = [
     "PlaceholderPage",
     "ProductionPage",
     "ResearchPage",
+    "SettingsPage",
 ]

@@ -52,10 +52,10 @@ Aligned with PRD §8.
 - [x] CapCut: Multi-style audio visualizers (Bar Spectrum, Mirrored Stereo, Dub Oscilloscope, Line Wave)
 - [x] CapCut: Auto-Shorts / Reels 9:16 highlight clipper (`1080x1920` peak-energy extractor)
 
-## P5 – Packaging & Hardening
+## P5 – Packaging & Hardening (completed)
 
-- [ ] Windows / macOS installers
-- [ ] Backup / restore
-- [ ] Full workflow integration tests with real media
-- [ ] Compliance review gate
-- [ ] User documentation
+- [x] Windows / macOS installers (`packaging/youtube_studio.spec`, `packaging/build_macos.sh`, `packaging/build_windows.ps1`)
+- [x] Backup / restore (`BackupService` atomic SQLite + manifest ZIP snapshots with SHA-256 verification)
+- [x] Full workflow integration tests with real media (`tests/integration/test_full_e2e_release_workflow.py`)
+- [x] Compliance review gate (`ComplianceReviewGate` + `SettingsPage` UI)
+- [x] User & compliance documentation (`docs/USER_GUIDE.md`, `docs/COMPLIANCE.md`)

@@ -19,7 +19,7 @@ A self-contained desktop platform that combines:
 
 **Principles:** Local-first · No mandatory vidIQ or paid AI subscription · Full manual user control over posting · Policy-compliant YouTube data handling · Working software from day one.
 
-## Current Milestone (P3 – Local AI)
+## Current Milestone (P5 – Packaging & Hardening — Complete)
 
 - [x] Project skeleton & dependency configuration
 - [x] SQLite schema + Alembic migrations
@@ -28,14 +28,14 @@ A self-contained desktop platform that combines:
 - [x] FFmpeg detection & hardware benchmark service
 - [x] Secure credential vault (`keyring` + fallback)
 - [x] Research provider contracts + Quota-aware YouTube Data API v3 adapter (P2)
-- [x] Basic PySide6 desktop shell + Music Library, Production, Research & Artwork/AI workspaces (P1–P3)
+- [x] Full PySide6 desktop shell + Music Library, Production, Research, Artwork/AI & Settings workspaces (P1–P5)
 - [x] Full music library scanner + duplicate & waveform/fingerprint detection (P1)
 - [x] Audio mixing + thumbnail layout + video rendering + output validation pipeline (P1)
 - [x] Research workspace UI, topic clustering, competitor watchlist, 30-day retention purge, and Saved Ideas → Production hand-off (P2)
 - [x] Local AI model registry, hardware compatibility check, LM/template metadata generation, and optional diffusion/procedural artwork generation (P3)
 - [x] VirtualDJ smart mixing (BPM/Camelot key detection, harmonic sort, auto-silence cue trim, bass-swap EQ crossfades) & CapCut video styling ("Now Playing" chapter overlays, multi-style visualizers, Ken Burns/vintage FX, and 9:16 Auto-Shorts clipper) (P4)
-- [x] Unit / integration test suite
-- [ ] Packaging, hardening, backup/restore & docs (P5)
+- [x] Unit & full end-to-end real-media integration test suite
+- [x] Packaging (`packaging/`), compliance review gate, atomic SQLite backup/restore & documentation (`docs/USER_GUIDE.md`, `docs/COMPLIANCE.md`) (P5)
 
 ## Quick Start
 
