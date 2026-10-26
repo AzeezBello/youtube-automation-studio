@@ -214,9 +214,9 @@ class ProjectService:
 
             eff_dur = pt.effective_duration_ms(source_dur)
             overlap = 0
-            if (
-                idx < len(tracks) - 1
-                and pt.transition_config.transition_type == TransitionType.CROSSFADE
+            if idx < len(tracks) - 1 and pt.transition_config.transition_type in (
+                TransitionType.CROSSFADE,
+                TransitionType.BASS_SWAP_EQ,
             ):
                 overlap = min(max(0, pt.transition_config.overlap_ms), eff_dur // 2)
             cursor_ms += max(0, eff_dur - overlap)
@@ -230,13 +230,46 @@ class ProjectService:
             source_dur = media_orm.duration_ms if media_orm else None
             eff_dur = pt.effective_duration_ms(source_dur)
             overlap = 0
-            if (
-                idx < len(tracks) - 1
-                and pt.transition_config.transition_type == TransitionType.CROSSFADE
+            if idx < len(tracks) - 1 and pt.transition_config.transition_type in (
+                TransitionType.CROSSFADE,
+                TransitionType.BASS_SWAP_EQ,
             ):
                 overlap = min(max(0, pt.transition_config.overlap_ms), eff_dur // 2)
             total_ms += max(0, eff_dur - overlap)
         return total_ms
+
+    def auto_cue_trim_tracks(self, project_id: str) -> list[ProjectTrack]:
+        """Automatically set trim_start_ms and trim_end_ms using detected cue_in_ms/cue_out_ms."""
+        tracks = self.list_tracks(project_id)
+        updated: list[ProjectTrack] = []
+        for pt in tracks:
+            media_orm = self._session.get(MediaFileORM, pt.media_file_id)
+            meta = json.loads(media_orm.metadata_json or "{}") if media_orm else {}
+            cue_in = meta.get("cue_in_ms")
+            cue_out = meta.get("cue_out_ms")
+            if isinstance(cue_in, int) and cue_in >= 0:
+                pt.trim_start_ms = cue_in
+            if isinstance(cue_out, int) and cue_out > pt.trim_start_ms:
+                pt.trim_end_ms = cue_out
+            updated.append(self.update_track(pt))
+        return updated
+
+    def auto_harmonic_sort(self, project_id: str) -> list[ProjectTrack]:
+        """Reorder project tracks using VirtualDJ-style Camelot key + BPM progression."""
+        from youtube_studio.media.dj_intelligence import DJIntelligenceService
+
+        tracks = self.list_tracks(project_id)
+        if len(tracks) <= 1:
+            return tracks
+        items: list[tuple[str, float, str]] = []
+        for pt in tracks:
+            media_orm = self._session.get(MediaFileORM, pt.media_file_id)
+            meta = json.loads(media_orm.metadata_json or "{}") if media_orm else {}
+            bpm = float(meta.get("bpm") or 120.0)
+            camelot = str(meta.get("camelot_code") or "8A")
+            items.append((pt.id, bpm, camelot))
+        ordered_ids = DJIntelligenceService.harmonic_sort_order(items)
+        return self.reorder_tracks(project_id, ordered_ids)
 
     # ------------------------------------------------------------------
     # Assets

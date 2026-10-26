@@ -101,8 +101,6 @@ class MainWindow(QMainWindow):
         ("Music Library", "music_library"),
         ("Production", "production"),
         ("Artwork", "artwork"),
-        ("Analytics", "analytics"),
-        ("Publishing", "publishing"),
         ("Settings", "settings"),
     ]
 
@@ -141,14 +139,6 @@ class MainWindow(QMainWindow):
             "music_library": MusicLibraryPage(),
             "production": ProductionPage(),
             "artwork": ArtworkPage(),
-            "analytics": PlaceholderPage(
-                "Channel Analytics",
-                "Authorized YouTube Analytics reports only. No fabricated metrics.",
-            ),
-            "publishing": PlaceholderPage(
-                "Publishing",
-                "Upload preparation, privacy controls, scheduling, and explicit user approval gates.",
-            ),
             "settings": PlaceholderPage(
                 "Settings",
                 "FFmpeg paths, model locations, resource profile, data directory, and credentials.",

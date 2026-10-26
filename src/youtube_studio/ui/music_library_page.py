@@ -1,4 +1,4 @@
-"""Music Library UI page – scan directories, search tracks, and inspect duplicates."""
+"""Music Library UI page – scan directories, inspect BPM & Camelot key, search tracks, and detect duplicates."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ from youtube_studio.storage import session_scope
 
 
 class MusicLibraryPage(QWidget):
-    """Interactive music library browser and recursive folder scanner."""
+    """Interactive music library browser with VirtualDJ BPM/Camelot key & duplicate detection."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -72,13 +72,13 @@ class MusicLibraryPage(QWidget):
         layout.addWidget(self.summary_label)
 
         # Track table
-        self.table = QTableWidget(0, 6)
+        self.table = QTableWidget(0, 7)
         self.table.setHorizontalHeaderLabels(
-            ["Title", "Artist", "Duration", "Format", "Status", "Path"]
+            ["Title", "Artist", "Duration", "BPM / Key (Camelot)", "Format", "Status", "Path"]
         )
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(6, QHeaderView.ResizeMode.Stretch)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         layout.addWidget(self.table, stretch=1)
@@ -134,6 +134,9 @@ class MusicLibraryPage(QWidget):
             title = str(item.metadata.get("title") or Path(item.path).stem)
             artist = str(item.metadata.get("artist") or "—")
             dur_str = self._format_duration(item.duration_ms)
+            bpm = item.metadata.get("bpm")
+            camelot = item.metadata.get("camelot_code")
+            bpm_key_str = f"{bpm} BPM · {camelot}" if bpm and camelot else "—"
             ext = str(item.metadata.get("extension") or Path(item.path).suffix).upper()
             is_dup = bool(item.file_hash and item.file_hash in dup_hashes)
             status = "Duplicate" if is_dup else "OK"
@@ -141,9 +144,10 @@ class MusicLibraryPage(QWidget):
             self.table.setItem(row_idx, 0, QTableWidgetItem(title))
             self.table.setItem(row_idx, 1, QTableWidgetItem(artist))
             self.table.setItem(row_idx, 2, QTableWidgetItem(dur_str))
-            self.table.setItem(row_idx, 3, QTableWidgetItem(ext))
-            self.table.setItem(row_idx, 4, QTableWidgetItem(status))
-            self.table.setItem(row_idx, 5, QTableWidgetItem(item.path))
+            self.table.setItem(row_idx, 3, QTableWidgetItem(bpm_key_str))
+            self.table.setItem(row_idx, 4, QTableWidgetItem(ext))
+            self.table.setItem(row_idx, 5, QTableWidgetItem(status))
+            self.table.setItem(row_idx, 6, QTableWidgetItem(item.path))
 
     @staticmethod
     def _format_duration(duration_ms: Optional[int]) -> str:

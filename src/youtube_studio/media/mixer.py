@@ -60,9 +60,9 @@ class AudioMixerService:
         for idx, track in enumerate(tracks):
             eff = track.effective_duration_ms()
             overlap = 0
-            if (
-                idx < len(tracks) - 1
-                and track.transition_config.transition_type == TransitionType.CROSSFADE
+            if idx < len(tracks) - 1 and track.transition_config.transition_type in (
+                TransitionType.CROSSFADE,
+                TransitionType.BASS_SWAP_EQ,
             ):
                 overlap = min(max(0, track.transition_config.overlap_ms), eff // 2 if eff > 0 else 0)
             total += max(0, eff - overlap)
@@ -111,12 +111,26 @@ class AudioMixerService:
                 out_label = f"m{idx}"
                 tc = prev_track.transition_config
                 eff_ms = prev_track.effective_duration_ms()
+                is_xfade = tc.transition_type in (
+                    TransitionType.CROSSFADE,
+                    TransitionType.BASS_SWAP_EQ,
+                )
                 overlap_ms = (
                     min(max(0, tc.overlap_ms), eff_ms // 2 if eff_ms > 0 else tc.overlap_ms)
-                    if tc.transition_type == TransitionType.CROSSFADE
+                    if is_xfade
                     else 0
                 )
-                if tc.transition_type == TransitionType.CROSSFADE and overlap_ms > 0:
+                if tc.transition_type == TransitionType.BASS_SWAP_EQ and overlap_ms > 0:
+                    dur_s = overlap_ms / 1000.0
+                    curve = tc.curve or "tri"
+                    eq_label = f"eq{idx}"
+                    stages.append(
+                        f"[{next_label}]equalizer=f=90:t=h:w=100:g=-9[{eq_label}]"
+                    )
+                    stages.append(
+                        f"[{current_label}][{eq_label}]acrossfade=d={dur_s:.3f}:c1={curve}:c2={curve}[{out_label}]"
+                    )
+                elif tc.transition_type == TransitionType.CROSSFADE and overlap_ms > 0:
                     dur_s = overlap_ms / 1000.0
                     curve = tc.curve or "tri"
                     stages.append(
@@ -242,7 +256,11 @@ class AudioMixerService:
             else:
                 prev_tc = tracks[idx - 1].transition_config
                 overlap_samples = 0
-                if prev_tc.transition_type == TransitionType.CROSSFADE and prev_tc.overlap_ms > 0:
+                if (
+                    prev_tc.transition_type
+                    in (TransitionType.CROSSFADE, TransitionType.BASS_SWAP_EQ)
+                    and prev_tc.overlap_ms > 0
+                ):
                     overlap_samples = min(
                         int((prev_tc.overlap_ms / 1000.0) * target_rate),
                         len(mixed_samples) // 2,

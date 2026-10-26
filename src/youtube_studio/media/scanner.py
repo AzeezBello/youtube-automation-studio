@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 from youtube_studio.domain.models.media import MediaFile, MediaType
+from youtube_studio.media.dj_intelligence import DJIntelligenceService
 from youtube_studio.media.ffmpeg_service import FFmpegService
 from youtube_studio.media.waveform import WaveformGenerator
 
@@ -115,6 +116,16 @@ class MediaScanner:
                     metadata["waveform_peaks"] = wf.peaks
                     metadata["waveform_rms"] = wf.rms
                     metadata["fingerprint"] = wf.fingerprint
+                    dj = DJIntelligenceService(self._waveform).analyze_track(
+                        resolved, duration_ms=duration_ms
+                    )
+                    metadata["bpm"] = dj.bpm
+                    metadata["camelot_code"] = dj.camelot_code
+                    metadata["musical_key"] = dj.musical_key
+                    metadata["cue_in_ms"] = dj.cue_in_ms
+                    metadata["cue_out_ms"] = dj.cue_out_ms
+                    metadata["peak_window_start_ms"] = dj.peak_window_start_ms
+                    metadata["peak_window_end_ms"] = dj.peak_window_end_ms
                 except Exception:
                     pass
 

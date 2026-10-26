@@ -43,15 +43,16 @@ Aligned with PRD §8.
 - [x] Optional local image generation
 - [x] Template fallbacks when models unavailable
 
-## P4 – Analytics & publishing
+## P4 – VirtualDJ & CapCut Pro Studio Features (completed)
 
-- [ ] OAuth 2.0 flow + OS keyring storage
-- [ ] YouTube Analytics import
-- [ ] Upload preparation + resumable uploads
-- [ ] Explicit approval gate & privacy controls
-- [ ] Token revocation & data deletion workflow
+- [x] VirtualDJ: Auto-silence trim & smart cue in/out detection + Bass-Swap EQ crossfades
+- [x] VirtualDJ: BPM & Musical Key (Camelot Wheel) detection + Smart harmonic track ordering
+- [x] CapCut: Dynamic "Now Playing" track title overlay (synced to chapters + `.srt` export) & progress bar
+- [x] CapCut: Subtle motion & vintage FX (Ken Burns slow zoom/pan, film grain, vignette, spinning vinyl)
+- [x] CapCut: Multi-style audio visualizers (Bar Spectrum, Mirrored Stereo, Dub Oscilloscope, Line Wave)
+- [x] CapCut: Auto-Shorts / Reels 9:16 highlight clipper (`1080x1920` peak-energy extractor)
 
-## P5 – Hardening
+## P5 – Packaging & Hardening
 
 - [ ] Windows / macOS installers
 - [ ] Backup / restore

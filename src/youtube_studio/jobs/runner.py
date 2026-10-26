@@ -18,7 +18,12 @@ from youtube_studio.domain.services.job_service import JobService
 from youtube_studio.domain.services.media_service import MediaLibraryService
 from youtube_studio.domain.services.project_service import ProjectService
 from youtube_studio.media.mixer import AudioMixerService, MixTrackInput
-from youtube_studio.media.renderer import RenderSpec, VideoRendererService
+from youtube_studio.media.renderer import (
+    RenderSpec,
+    VideoRendererService,
+    VisualFXConfig,
+    VisualizerStyle,
+)
 from youtube_studio.media.thumbnail import ThumbnailEngine, ThumbnailSpec
 from youtube_studio.media.validator import MediaValidator
 
@@ -70,6 +75,8 @@ class ProductionJobRunner:
         *,
         output_dir: Optional[Path] = None,
         enable_waveform_overlay: bool = False,
+        visualizer_style: str = "none",
+        visual_fx: Optional[dict[str, bool]] = None,
     ) -> Job:
         project = self._projects.get_project(project_id)
         if project is None:
@@ -89,6 +96,8 @@ class ProductionJobRunner:
             input_data={
                 "output_dir": str(resolved_out),
                 "enable_waveform_overlay": enable_waveform_overlay,
+                "visualizer_style": visualizer_style,
+                "visual_fx": visual_fx or {},
             },
         )
 
@@ -213,6 +222,9 @@ class ProductionJobRunner:
                     bg_image_path = Path(artifacts.get("background") or artifacts["thumbnail"])
                     video_path = out_dir / "video.mp4"
                     expected_dur = int(artifacts.get("mixed_duration_ms", "1000"))
+                    vis_str = str(job.input_data.get("visualizer_style", "none"))
+                    fx_dict = dict(job.input_data.get("visual_fx", {}))
+                    chapters = self._projects.compute_chapters(project.id)
                     render_spec = RenderSpec(
                         audio_path=mixed_audio_path,
                         image_path=bg_image_path,
@@ -221,9 +233,23 @@ class ProductionJobRunner:
                         enable_waveform_overlay=bool(
                             job.input_data.get("enable_waveform_overlay", False)
                         ),
+                        visualizer_style=VisualizerStyle(vis_str)
+                        if vis_str in {v.value for v in VisualizerStyle}
+                        else VisualizerStyle.NONE,
+                        visual_fx=VisualFXConfig(
+                            now_playing_overlay=bool(fx_dict.get("now_playing_overlay", False)),
+                            progress_bar=bool(fx_dict.get("progress_bar", False)),
+                            slow_zoom=bool(fx_dict.get("slow_zoom", False)),
+                            film_grain=bool(fx_dict.get("film_grain", False)),
+                            vignette=bool(fx_dict.get("vignette", False)),
+                            spinning_vinyl=bool(fx_dict.get("spinning_vinyl", False)),
+                        ),
+                        chapters=chapters,
                         duration_ms=expected_dur,
                     )
                     render_res = self._renderer.render(render_spec)
+                    if render_res.srt_path and render_res.srt_path.exists():
+                        artifacts["now_playing_srt"] = str(render_res.srt_path)
                     artifacts["rendered_video"] = str(render_res.output_path)
                     self._projects.register_asset(
                         project.id,

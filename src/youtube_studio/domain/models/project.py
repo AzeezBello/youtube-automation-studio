@@ -38,6 +38,7 @@ class ProjectStatus(str, Enum):
 class TransitionType(str, Enum):
     NONE = "none"
     CROSSFADE = "crossfade"
+    BASS_SWAP_EQ = "bass_swap_eq"
     HARD_CUT = "hard_cut"
 
 
