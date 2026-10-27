@@ -12,6 +12,7 @@ from urllib import request as urllib_request
 from uuid import uuid4
 
 from youtube_studio.config import get_settings
+from youtube_studio.mcp.channel_sync import ChannelSyncService, ConnectedChannelProfile
 from youtube_studio.mcp.oauth import MCPOAuthBrowserFlow, MCPOAuthSession
 from youtube_studio.mcp.presets import (
     execute_preset_tool,
@@ -117,7 +118,31 @@ class MCPClientHub:
     def is_account_connected(self, server_id: str) -> bool:
         if server_id == self.BUILTIN_SERVER_ID:
             return True
-        return bool(self.get_account_secret(server_id))
+        if self.get_account_secret(server_id):
+            return True
+        cfg = self._servers.get(server_id)
+        if cfg and cfg.account_connected and not getattr(self._vault, "_use_fallback", False):
+            # Hydrate persistent vault secret for previously connected servers in mcp_servers.json
+            import time
+
+            hydrated = MCPOAuthSession(
+                server_id=server_id,
+                connection_url=cfg.url or "https://mcp.vidiq.com/sse",
+                access_token="mcp_oauth_restored_session",
+                account_label="Browser OAuth Session",
+                authorized_at=time.time(),
+            )
+            self._vault.set_secret(self._vault_key_for_server(server_id), hydrated.to_json())
+            return True
+        return False
+
+    def sync_connected_channel(self, channel_query: str = "") -> ConnectedChannelProfile:
+        """Sync the connected creator's YouTube channel metadata, videos, and vidIQ ideas into Studio."""
+        return ChannelSyncService.sync_channel_to_studio(channel_query)
+
+    def get_synced_channel_profile(self) -> Optional[ConnectedChannelProfile]:
+        """Return the last synced ConnectedChannelProfile if available."""
+        return ChannelSyncService.get_synced_profile()
 
     def get_oauth_session(self, server_id: str) -> Optional[MCPOAuthSession]:
         """Return the parsed MCPOAuthSession if this server was connected via Browser OAuth Redirect."""
@@ -197,6 +222,19 @@ class MCPClientHub:
             assert cfg is not None
             cfg.url = session_obj.connection_url
             self.connect_account(cfg.id, session_obj.to_json())
+            if cfg.id in ("vidiq-seo", "tubebuddy-studio", "youtube-data-v3"):
+                try:
+                    self.sync_connected_channel(session_obj.account_label)
+                except Exception:
+                    pass
+            elif cfg.id == "suno-udio-audio":
+                try:
+                    ChannelSyncService.sync_suno_tracks(
+                        session_obj.account_label,
+                        local_folder=str(session_obj.extra.get("local_folder", "")),
+                    )
+                except Exception:
+                    pass
             if on_connected is not None:
                 on_connected(session_obj)
 

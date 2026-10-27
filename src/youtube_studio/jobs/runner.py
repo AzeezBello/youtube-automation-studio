@@ -86,7 +86,7 @@ class ProductionJobRunner:
         resolved_out = (
             output_dir.expanduser().resolve()
             if output_dir is not None
-            else (settings.resolved_data_dir() / "jobs" / project_id)
+            else (settings.resolved_output_dir() / project_id)
         )
         return self._jobs.enqueue(
             JobType.PACKAGE,
@@ -126,7 +126,7 @@ class ProductionJobRunner:
         out_dir = (
             Path(out_dir_str).expanduser().resolve()
             if out_dir_str
-            else (settings.resolved_data_dir() / "jobs" / project.id)
+            else (settings.resolved_output_dir() / project.id)
         )
         out_dir.mkdir(parents=True, exist_ok=True)
 

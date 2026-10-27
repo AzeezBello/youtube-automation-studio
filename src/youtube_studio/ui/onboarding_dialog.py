@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDialog,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -240,6 +241,22 @@ class OnboardingDialog(QDialog):
         hw_lbl = QLabel(hw_text)
         hw_lbl.setWordWrap(True)
         hw_layout.addWidget(hw_lbl)
+
+        out_row = QHBoxLayout()
+        out_row.addWidget(QLabel("Output Folder:"))
+        self.onboarding_output_input = QLineEdit()
+        self.onboarding_output_input.setText(str(get_settings().resolved_output_dir()))
+        self.onboarding_output_input.setToolTip(
+            "Default output folder where rendered videos, mixes, Shorts, and release packages are saved."
+        )
+        out_row.addWidget(self.onboarding_output_input, stretch=1)
+
+        browse_out_btn = QPushButton("📁 Browse…")
+        browse_out_btn.setToolTip("Select where your rendered videos and release packages should be saved.")
+        browse_out_btn.clicked.connect(self._on_browse_onboarding_output)
+        out_row.addWidget(browse_out_btn)
+        hw_layout.addLayout(out_row)
+
         layout.addWidget(hw_group)
 
         api_group = QGroupBox("MCP Browser Redirects & Optional YouTube Data API v3 Key")
@@ -333,6 +350,18 @@ class OnboardingDialog(QDialog):
         except Exception as exc:
             QMessageBox.critical(self, "Could Not Create Channel", str(exc))
 
+    def _on_browse_onboarding_output(self) -> None:
+        current = self.onboarding_output_input.text().strip() or str(get_settings().resolved_output_dir())
+        chosen = QFileDialog.getExistingDirectory(
+            self,
+            "Select Default Output Folder for Videos & Packages",
+            current,
+        )
+        if not chosen:
+            return
+        saved = get_settings().set_output_dir(chosen)
+        self.onboarding_output_input.setText(str(saved))
+
     def _on_save_api_key(self) -> None:
         key = self.api_key_input.text().strip()
         if not key:
@@ -352,6 +381,13 @@ class OnboardingDialog(QDialog):
         if idx == 1 and self.channel_name_input.text().strip():
             # Auto-save channel if user typed a name and clicked Next directly
             self._on_create_channel_clicked()
+        if idx == 2 and hasattr(self, "onboarding_output_input"):
+            raw_out = self.onboarding_output_input.text().strip()
+            if raw_out:
+                try:
+                    get_settings().set_output_dir(raw_out)
+                except Exception:
+                    pass
         if idx < self.TOTAL_STEPS - 1:
             self.stack.setCurrentIndex(idx + 1)
             self._update_step_ui()

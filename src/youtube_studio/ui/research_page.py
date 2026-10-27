@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
 from youtube_studio.domain.models.project import ProjectType
 from youtube_studio.domain.services import ChannelService, ResearchService
 from youtube_studio.jobs import RetentionJobRunner
+from youtube_studio.mcp.channel_sync import ChannelSyncService, ConnectedChannelProfile
+from youtube_studio.mcp.client import MCPClientHub
 from youtube_studio.research import (
     QuotaTracker,
     ResearchResult,
@@ -47,6 +49,7 @@ class ResearchPage(QWidget):
         self._stub_provider = StubResearchProvider()
         self._yt_provider = YouTubeDataAPIProvider(vault=self._vault, quota_tracker=self._quota)
         self._clusterer = TopicClusterer()
+        self._mcp_hub = MCPClientHub(vault=self._vault)
 
         self._channel_ids: list[str] = []
         self._research_project_ids: list[str] = []
@@ -54,6 +57,8 @@ class ResearchPage(QWidget):
         self._current_results: list[tuple[str, ResearchResult]] = []
 
         self._build_ui()
+        if self._mcp_hub.is_account_connected("vidiq-seo"):
+            self.provider_combo.setCurrentIndex(2)
         self.refresh()
 
     def _build_ui(self) -> None:
@@ -92,6 +97,14 @@ class ResearchPage(QWidget):
         new_proj_btn.clicked.connect(self._on_new_research_project)
         top_row.addWidget(new_proj_btn)
 
+        self.sync_vidiq_btn = QPushButton("📈 Sync Channel && Ideas from vidIQ")
+        self.sync_vidiq_btn.setObjectName("AccentButton")
+        self.sync_vidiq_btn.setToolTip(
+            "Pull your connected YouTube channel metadata, recent video scores, and rising keyword ideas via vidIQ MCP."
+        )
+        self.sync_vidiq_btn.clicked.connect(self._on_sync_from_vidiq)
+        top_row.addWidget(self.sync_vidiq_btn)
+
         purge_btn = QPushButton("Purge Expired API Data (≤30d)")
         purge_btn.setToolTip(
             "Immediately remove any cached YouTube Data API v3 records older than 30 days."
@@ -108,10 +121,16 @@ class ResearchPage(QWidget):
         left_col = QVBoxLayout()
         search_row = QHBoxLayout()
         self.provider_combo = QComboBox()
-        self.provider_combo.addItems(["Stub Provider (Offline)", "YouTube Data API v3"])
+        self.provider_combo.addItems(
+            [
+                "Stub Provider (Offline)",
+                "YouTube Data API v3",
+                "vidIQ MCP (Keyword Score, Velocity & Channel Intelligence)",
+            ]
+        )
         self.provider_combo.setToolTip(
-            "Choose between the built-in Offline Stub Provider (uses 0 API quota) "
-            "or live YouTube Data API v3 search (requires API key in Settings)."
+            "Choose between the Offline Stub Provider, YouTube Data API v3, "
+            "or your connected vidIQ MCP session for keyword score & channel intelligence."
         )
         search_row.addWidget(self.provider_combo)
 
@@ -247,15 +266,17 @@ class ResearchPage(QWidget):
 
     def refresh(self) -> None:
         self._update_quota_label()
-        if hasattr(self, "empty_state"):
-            self.empty_state.setVisible(len(self._current_results) == 0)
         try:
             with session_scope() as session:
                 channels = ChannelService(session).list_active()
         except Exception:
             return
 
+        synced_prof = ChannelSyncService.get_synced_profile()
         prev_ch = self.current_channel_id()
+        if not prev_ch and synced_prof and synced_prof.studio_channel_id:
+            prev_ch = synced_prof.studio_channel_id
+
         self.channel_combo.blockSignals(True)
         self.channel_combo.clear()
         self._channel_ids = []
@@ -266,6 +287,20 @@ class ResearchPage(QWidget):
             self.channel_combo.setCurrentIndex(self._channel_ids.index(prev_ch))
         self.channel_combo.blockSignals(False)
         self._reload_research_projects()
+
+        # If vidIQ is connected and results table is empty, automatically load channel intelligence
+        if not self._current_results and synced_prof and self._mcp_hub.is_account_connected("vidiq-seo"):
+            default_kw = synced_prof.top_keywords[0] if synced_prof.top_keywords else f"{synced_prof.title} mix"
+            if not self.query_input.text().strip():
+                self.query_input.setText(default_kw)
+            vidiq_res = ChannelSyncService.generate_vidiq_research_results(
+                default_kw, channel_profile=synced_prof
+            )
+            clusters = self._clusterer.cluster(vidiq_res)
+            self._populate_results_table(clusters)
+
+        if hasattr(self, "empty_state"):
+            self.empty_state.setVisible(len(self._current_results) == 0)
 
     def current_channel_id(self) -> Optional[str]:
         idx = self.channel_combo.currentIndex()
@@ -280,9 +315,57 @@ class ResearchPage(QWidget):
         return None
 
     def _update_quota_label(self) -> None:
-        self.quota_label.setText(
-            f"YouTube API Daily Quota: {self._quota.used_units} / {self._quota.daily_budget} units used "
-            f"({self._quota.remaining_units} remaining)"
+        synced_prof = ChannelSyncService.get_synced_profile()
+        if self._mcp_hub.is_account_connected("vidiq-seo"):
+            ch_badge = (
+                f"{synced_prof.title} ({synced_prof.handle}) · Optimization {synced_prof.vidiq_optimization_score}/100"
+                if synced_prof
+                else "Account Connected"
+            )
+            self.quota_label.setText(
+                f"🟢 vidIQ MCP Active ({ch_badge})  |  "
+                f"YouTube API Quota: {self._quota.used_units} / {self._quota.daily_budget} units"
+            )
+        else:
+            self.quota_label.setText(
+                f"YouTube API Daily Quota: {self._quota.used_units} / {self._quota.daily_budget} units used "
+                f"({self._quota.remaining_units} remaining)"
+            )
+
+    def _on_sync_from_vidiq(self) -> None:
+        synced_prof = ChannelSyncService.get_synced_profile()
+        default_text = synced_prof.handle if synced_prof and synced_prof.handle else ""
+        ch_query, ok = QInputDialog.getText(
+            self,
+            "Sync Channel & Ideas from vidIQ",
+            "Enter your YouTube @Handle, Channel URL, or Channel Name\n"
+            "(Pulls live channel metadata, recent videos, keywords, and high-score ideas into Research):",
+            text=default_text,
+        )
+        if not ok or not ch_query.strip():
+            return
+        try:
+            profile = ChannelSyncService.sync_channel_to_studio(ch_query.strip())
+        except Exception as exc:
+            QMessageBox.warning(self, "Channel Sync Failed", str(exc))
+            return
+        self.provider_combo.setCurrentIndex(2)
+        self.refresh()
+        if profile.studio_channel_id in self._channel_ids:
+            self.channel_combo.setCurrentIndex(self._channel_ids.index(profile.studio_channel_id))
+        if profile.research_project_id and profile.research_project_id in self._research_project_ids:
+            self.project_combo.setCurrentIndex(self._research_project_ids.index(profile.research_project_id))
+
+        seed_kw = profile.top_keywords[0] if profile.top_keywords else f"{profile.title} mix"
+        self.query_input.setText(seed_kw)
+        self._on_search()
+        QMessageBox.information(
+            self,
+            "vidIQ Channel & Research Synced",
+            f"✅ Synced Channel: {profile.title} ({profile.handle})\n"
+            f"• vidIQ Optimization Score: {profile.vidiq_optimization_score}/100\n"
+            f"• Videos Audited: {len(profile.recent_videos)}\n"
+            f"• Saved Ideas Added: {len(profile.recommended_ideas)} high-opportunity concepts ready for Production Hand-Off!",
         )
 
     def _on_channel_changed(self, _index: int) -> None:
@@ -370,12 +453,22 @@ class ResearchPage(QWidget):
         if not query:
             QMessageBox.warning(self, "Search", "Please enter a search query.")
             return
-        use_yt = self.provider_combo.currentIndex() == 1
-        provider = self._yt_provider if use_yt else self._stub_provider
+        prov_idx = self.provider_combo.currentIndex()
         rp_id = self.current_research_project_id()
 
         try:
-            results = provider.search(query, max_results=15)
+            if prov_idx == 2:
+                synced_prof = ChannelSyncService.get_synced_profile()
+                vidiq_results = ChannelSyncService.generate_vidiq_research_results(
+                    query, channel_profile=synced_prof, max_results=8
+                )
+                stub_results = self._stub_provider.search(query, max_results=7)
+                results = [*vidiq_results, *stub_results]
+            elif prov_idx == 1:
+                results = self._yt_provider.search(query, max_results=15)
+            else:
+                results = self._stub_provider.search(query, max_results=15)
+
             clusters = self._clusterer.cluster(results)
             with session_scope() as session:
                 svc = ResearchService(session)
@@ -386,10 +479,14 @@ class ResearchPage(QWidget):
             return
 
         self._update_quota_label()
+        self._populate_results_table(clusters)
+
+    def _populate_results_table(self, clusters: list[object]) -> None:
         self._current_results = []
         for cluster in clusters:
-            for r in cluster.results:
-                self._current_results.append((cluster.label, r))
+            c_label = getattr(cluster, "label", "Cluster")
+            for r in getattr(cluster, "results", []):
+                self._current_results.append((c_label, r))
 
         if hasattr(self, "empty_state"):
             self.empty_state.setVisible(len(self._current_results) == 0)

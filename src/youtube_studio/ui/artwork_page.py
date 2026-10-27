@@ -191,6 +191,18 @@ class ArtworkPage(QWidget):
         self.aspect_combo.setToolTip("Choose 16:9 for standard YouTube videos or 9:16 for YouTube Shorts.")
         art_form.addRow("Aspect Ratio:", self.aspect_combo)
 
+        art_out_row = QHBoxLayout()
+        self.art_output_input = QLineEdit()
+        self.art_output_input.setText(str(get_settings().resolved_output_dir()))
+        self.art_output_input.setToolTip("Destination directory where generated thumbnails and artwork are saved.")
+        art_out_row.addWidget(self.art_output_input, stretch=1)
+
+        self.btn_browse_art_out = QPushButton("📁 Browse…")
+        self.btn_browse_art_out.setToolTip("Choose a custom output directory for generated thumbnails and artwork.")
+        self.btn_browse_art_out.clicked.connect(self._on_browse_art_output)
+        art_out_row.addWidget(self.btn_browse_art_out)
+        art_form.addRow("Output Folder:", art_out_row)
+
         art_layout.addLayout(art_form)
 
         gen_art_btn = QPushButton("Generate Thumbnail && Artwork")
@@ -217,6 +229,8 @@ class ArtworkPage(QWidget):
         root.addLayout(body, stretch=1)
 
     def refresh(self) -> None:
+        if hasattr(self, "art_output_input"):
+            self.art_output_input.setText(str(get_settings().resolved_output_dir()))
         try:
             with session_scope() as session:
                 channels = ChannelService(session).list_active()
@@ -404,6 +418,18 @@ class ArtworkPage(QWidget):
             f"Saved Metadata Draft v{draft.version} for project.",
         )
 
+    def _on_browse_art_output(self) -> None:
+        current = self.art_output_input.text().strip() or str(get_settings().resolved_output_dir())
+        chosen = QFileDialog.getExistingDirectory(
+            self,
+            "Select Output Folder for Thumbnails & Artwork",
+            current,
+        )
+        if not chosen:
+            return
+        saved = get_settings().set_output_dir(chosen)
+        self.art_output_input.setText(str(saved))
+
     def _on_generate_artwork(self) -> None:
         project_id = self.current_project_id()
         channel_id = self.current_channel_id()
@@ -417,7 +443,9 @@ class ArtworkPage(QWidget):
         width, height = (1080, 1920) if is_vertical else (1280, 720)
 
         settings = get_settings()
-        out_dir = settings.resolved_data_dir() / "assets" / project_id
+        raw_out = self.art_output_input.text().strip() if hasattr(self, "art_output_input") else ""
+        base_out = settings.set_output_dir(raw_out) if raw_out else settings.resolved_output_dir()
+        out_dir = base_out / project_id
         out_path = out_dir / f"thumbnail_{palette}_{width}x{height}.png"
 
         try:

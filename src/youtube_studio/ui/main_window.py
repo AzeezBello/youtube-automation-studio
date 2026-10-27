@@ -211,6 +211,7 @@ class DashboardPage(QWidget):
 
         lines = [
             f"<b>Application:</b> {settings.app_name} v{__version__}",
+            f"<b>Output directory:</b> {settings.resolved_output_dir()}",
             f"<b>Data directory:</b> {settings.resolved_data_dir()}",
             f"<b>Resource profile:</b> {settings.resource_profile.value}",
         ]
@@ -410,6 +411,11 @@ class MainWindow(QMainWindow):
         for _, key, _ in self.NAV_ITEMS:
             scroll_wrapper = wrap_in_responsive_scroll(self.pages[key], parent=self.stack)
             self.stack.addWidget(scroll_wrapper)
+        # Ensure Dashboard & Research reflect any channel synced by MCPHubPage on launch
+        for key in ("dashboard", "research", "production", "artwork"):
+            page = self.pages.get(key)
+            if page is not None and hasattr(page, "refresh"):
+                page.refresh()
         right_container.addWidget(self.stack, stretch=1)
 
         self.workspace_row.addLayout(right_container, stretch=1)

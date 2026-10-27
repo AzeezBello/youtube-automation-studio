@@ -5,17 +5,20 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QUrl
+from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
+    QFileDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QInputDialog,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -273,7 +276,7 @@ class ProductionPage(QWidget):
         right_col.addWidget(fx_group)
 
         # Chapters & Action Buttons
-        chapters_group = QGroupBox("Generated Chapters & Export Actions")
+        chapters_group = QGroupBox("Generated Chapters, Output Location & Export Actions")
         chapters_layout = QVBoxLayout(chapters_group)
         self.chapters_preview = QPlainTextEdit()
         self.chapters_preview.setReadOnly(True)
@@ -281,6 +284,31 @@ class ProductionPage(QWidget):
             "Auto-computed YouTube chapter timestamps (starting at 00:00) accounting for trims and crossfade overlaps."
         )
         chapters_layout.addWidget(self.chapters_preview)
+
+        out_row = QHBoxLayout()
+        lbl_out = QLabel("Output Folder:")
+        lbl_out.setStyleSheet("font-weight: 600;")
+        out_row.addWidget(lbl_out)
+
+        self.output_dir_input = QLineEdit()
+        self.output_dir_input.setText(str(get_settings().resolved_output_dir()))
+        self.output_dir_input.setPlaceholderText("Choose where rendered videos, mixes, Shorts & manifests are saved…")
+        self.output_dir_input.setToolTip(
+            "Destination directory where rendered 16:9 videos, mixed WAV audio, 9:16 Shorts, and package manifests are saved."
+        )
+        self.output_dir_input.editingFinished.connect(self._on_output_dir_edited)
+        out_row.addWidget(self.output_dir_input, stretch=1)
+
+        self.btn_browse_output = QPushButton("📁 Set Output Folder…")
+        self.btn_browse_output.setToolTip("Browse and select a custom folder for your rendered videos and export packages.")
+        self.btn_browse_output.clicked.connect(self._on_browse_output_dir)
+        out_row.addWidget(self.btn_browse_output)
+
+        self.btn_open_output = QPushButton("↗ Open")
+        self.btn_open_output.setToolTip("Open the configured output folder in Finder / File Explorer.")
+        self.btn_open_output.clicked.connect(self._on_open_output_dir)
+        out_row.addWidget(self.btn_open_output)
+        chapters_layout.addLayout(out_row)
 
         self.produce_btn = QPushButton("Run Full Production Pipeline (Mix → Thumbnail → Video → Package)")
         self.produce_btn.setObjectName("PrimaryButton")
@@ -305,6 +333,8 @@ class ProductionPage(QWidget):
         root.addLayout(body, stretch=1)
 
     def refresh(self) -> None:
+        if hasattr(self, "output_dir_input"):
+            self.output_dir_input.setText(str(get_settings().resolved_output_dir()))
         try:
             with session_scope() as session:
                 channels = ChannelService(session).list_active()
@@ -565,11 +595,62 @@ class ProductionPage(QWidget):
         self._reload_tracks()
         self.tracks_table.selectRow(row)
 
+    def _resolve_and_save_output_base(self) -> Path:
+        settings = get_settings()
+        raw = self.output_dir_input.text().strip() if hasattr(self, "output_dir_input") else ""
+        if raw:
+            saved = settings.set_output_dir(raw)
+            self.output_dir_input.setText(str(saved))
+            self._notify_output_dir_changed()
+            return saved
+        return settings.resolved_output_dir()
+
+    def _on_output_dir_edited(self) -> None:
+        raw = self.output_dir_input.text().strip()
+        if raw:
+            try:
+                saved = get_settings().set_output_dir(raw)
+                self.output_dir_input.setText(str(saved))
+                self._notify_output_dir_changed()
+            except Exception as exc:
+                QMessageBox.warning(self, "Invalid Output Folder", str(exc))
+
+    def _on_browse_output_dir(self) -> None:
+        current = self.output_dir_input.text().strip() or str(get_settings().resolved_output_dir())
+        chosen = QFileDialog.getExistingDirectory(
+            self,
+            "Select Output Location for Videos, Mixes & Release Packages",
+            current,
+        )
+        if not chosen:
+            return
+        saved = get_settings().set_output_dir(chosen)
+        self.output_dir_input.setText(str(saved))
+        self._notify_output_dir_changed()
+
+    def _on_open_output_dir(self) -> None:
+        base = self._resolve_and_save_output_base()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(base)))
+
+    def _notify_output_dir_changed(self) -> None:
+        win = self.window()
+        pages_dict = getattr(win, "pages", None)
+        if isinstance(pages_dict, dict):
+            for key in ("settings", "artwork", "dashboard"):
+                page = pages_dict.get(key)
+                if page is not None and hasattr(page, "refresh"):
+                    try:
+                        page.refresh()
+                    except Exception:
+                        pass
+
     def _on_run_production(self) -> None:
         project_id = self.current_project_id()
         if not project_id:
             QMessageBox.warning(self, "Production", "Please select a project first.")
             return
+        base_out = self._resolve_and_save_output_base()
+        project_out_dir = base_out / project_id
         vis_style = self.visualizer_combo.currentText()
         fx_payload = {
             "now_playing_overlay": self.chk_now_playing.isChecked(),
@@ -583,6 +664,7 @@ class ProductionPage(QWidget):
                 runner = ProductionJobRunner(session)
                 job = runner.enqueue_production_job(
                     project_id,
+                    output_dir=project_out_dir,
                     visualizer_style=vis_style,
                     visual_fx=fx_payload,
                 )
@@ -604,6 +686,7 @@ class ProductionPage(QWidget):
         if not project_id:
             QMessageBox.warning(self, "Short Clipper", "Please select a project first.")
             return
+        base_out = self._resolve_and_save_output_base()
         try:
             with session_scope() as session:
                 proj_svc = ProjectService(session)
@@ -619,7 +702,7 @@ class ProductionPage(QWidget):
                 if not first_media:
                     return
                 source_path = Path(first_media.path)
-                out_dir = get_settings().resolved_data_dir() / "jobs" / project_id / "shorts"
+                out_dir = base_out / project_id / "shorts"
                 clipper = ShortsClipperService()
                 short_res = clipper.create_highlight_short(
                     source_path,

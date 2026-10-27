@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from enum import Enum
+import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +14,46 @@ class ResourceProfile(str, Enum):
     ECONOMY = "economy"
     BALANCED = "balanced"
     HIGH_PERFORMANCE = "high_performance"
+
+
+def _resolve_output_dir_for_settings(
+    resolved_data_dir: Path,
+    default_output_root: Optional[Path],
+) -> Path:
+    prefs_path = resolved_data_dir / "studio_preferences.json"
+    if prefs_path.exists():
+        try:
+            data = json.loads(prefs_path.read_text(encoding="utf-8"))
+            custom_out = data.get("output_dir")
+            if isinstance(custom_out, str) and custom_out.strip():
+                out_path = Path(custom_out.strip()).expanduser().resolve()
+                out_path.mkdir(parents=True, exist_ok=True)
+                return out_path
+        except Exception:
+            pass
+    if default_output_root is not None:
+        out_path = default_output_root.expanduser().resolve()
+        out_path.mkdir(parents=True, exist_ok=True)
+        return out_path
+    fallback_out = (resolved_data_dir / "jobs").resolve()
+    fallback_out.mkdir(parents=True, exist_ok=True)
+    return fallback_out
+
+
+def _persist_output_dir_for_settings(resolved_data_dir: Path, new_dir: Path | str) -> Path:
+    target = Path(new_dir).expanduser().resolve()
+    target.mkdir(parents=True, exist_ok=True)
+    prefs_path = resolved_data_dir / "studio_preferences.json"
+    prefs_path.parent.mkdir(parents=True, exist_ok=True)
+    existing: dict[str, object] = {}
+    if prefs_path.exists():
+        try:
+            existing = json.loads(prefs_path.read_text(encoding="utf-8"))
+        except Exception:
+            existing = {}
+    existing["output_dir"] = str(target)
+    prefs_path.write_text(json.dumps(existing, indent=2), encoding="utf-8")
+    return target
 
 
 try:
@@ -52,6 +93,15 @@ try:
                 return self.data_dir.expanduser().resolve()
             return (Path.home() / ".youtube_automation_studio").resolve()
 
+        def resolved_output_dir(self) -> Path:
+            return _resolve_output_dir_for_settings(
+                self.resolved_data_dir(),
+                self.default_output_root,
+            )
+
+        def set_output_dir(self, new_dir: Path | str) -> Path:
+            return _persist_output_dir_for_settings(self.resolved_data_dir(), new_dir)
+
         def database_path(self) -> Path:
             return self.resolved_data_dir() / self.database_name
 
@@ -61,6 +111,7 @@ try:
             (base / "assets").mkdir(parents=True, exist_ok=True)
             (base / "jobs").mkdir(parents=True, exist_ok=True)
             (base / "backups").mkdir(parents=True, exist_ok=True)
+            self.resolved_output_dir()
             if self.models_dir:
                 self.models_dir.mkdir(parents=True, exist_ok=True)
             if self.default_output_root:
@@ -94,6 +145,15 @@ except ImportError:
                 return self.data_dir.expanduser().resolve()
             return (Path.home() / ".youtube_automation_studio").resolve()
 
+        def resolved_output_dir(self) -> Path:
+            return _resolve_output_dir_for_settings(
+                self.resolved_data_dir(),
+                self.default_output_root,
+            )
+
+        def set_output_dir(self, new_dir: Path | str) -> Path:
+            return _persist_output_dir_for_settings(self.resolved_data_dir(), new_dir)
+
         def database_path(self) -> Path:
             return self.resolved_data_dir() / self.database_name
 
@@ -103,6 +163,7 @@ except ImportError:
             (base / "assets").mkdir(parents=True, exist_ok=True)
             (base / "jobs").mkdir(parents=True, exist_ok=True)
             (base / "backups").mkdir(parents=True, exist_ok=True)
+            self.resolved_output_dir()
             if self.models_dir:
                 self.models_dir.mkdir(parents=True, exist_ok=True)
             if self.default_output_root:

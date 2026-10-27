@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication,
@@ -36,14 +36,30 @@ from youtube_studio.ui.components import EmptyStateWidget
 class MCPHubPage(QWidget):
     """Interactive Bidirectional MCP Hub for Studio MCP Server & External MCP Client connections."""
 
+    oauth_completed = Signal(object)
+
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
         self._hub = MCPClientHub()
         self._hub.seed_preconfigured_servers()
         self._server_ids: list[str] = []
         self._current_tools: list[MCPToolDefinition] = []
+        self._pending_oauth_sid: Optional[str] = None
+        self.oauth_completed.connect(self._on_oauth_completed)
+        self._poll_timer = QTimer(self)
+        self._poll_timer.setInterval(800)
+        self._poll_timer.timeout.connect(self._check_pending_oauth_status)
         self._build_ui()
         self.refresh()
+        synced_prof = self._hub.get_synced_channel_profile()
+        if synced_prof and self._hub.is_account_connected("vidiq-seo"):
+            self.output_edit.setPlainText(
+                self._format_channel_sync_report(
+                    "vidIQ — YouTube SEO & Channel Intelligence",
+                    "https://mcp.vidiq.com/sse",
+                    synced_prof,
+                )
+            )
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -105,6 +121,33 @@ class MCPHubPage(QWidget):
         )
         url_row.addWidget(self.url_input, stretch=1)
         srv_layout.addLayout(url_row)
+
+        # Connected YouTube Channel Sync Row (pulls channel data & ideas into Studio & Research)
+        ch_sync_row = QHBoxLayout()
+        lbl_ch = QLabel("My Channel:")
+        lbl_ch.setStyleSheet("font-weight: 600;")
+        ch_sync_row.addWidget(lbl_ch)
+
+        self.channel_sync_input = QLineEdit()
+        self.channel_sync_input.setPlaceholderText(
+            "Enter your YouTube @handle or Channel URL (e.g. @YourChannel) and click Sync…"
+        )
+        self.channel_sync_input.setToolTip(
+            "Enter your real YouTube @handle, channel URL, or channel name to pull live channel metadata, videos, and vidIQ keyword ideas."
+        )
+        synced_prof = self._hub.get_synced_channel_profile()
+        if synced_prof:
+            self.channel_sync_input.setText(synced_prof.handle or synced_prof.title)
+        ch_sync_row.addWidget(self.channel_sync_input, stretch=1)
+
+        self.btn_sync_channel = QPushButton("🔄 Sync My Channel Data")
+        self.btn_sync_channel.setObjectName("AccentButton")
+        self.btn_sync_channel.setToolTip(
+            "Fetch your YouTube channel data, video optimization scores, and rising keyword ideas via your connected vidIQ account."
+        )
+        self.btn_sync_channel.clicked.connect(self._on_sync_channel_data)
+        ch_sync_row.addWidget(self.btn_sync_channel)
+        srv_layout.addLayout(ch_sync_row)
 
         srv_btns_top = QHBoxLayout()
         self.btn_connect_account = QPushButton("🌐 Login && Connect in Browser")
@@ -231,6 +274,7 @@ class MCPHubPage(QWidget):
             self.empty_state.setVisible(not any_external_connected)
 
         self.servers_table.setRowCount(len(servers))
+        synced_prof = self._hub.get_synced_channel_profile()
         for idx, srv in enumerate(servers):
             oauth_sess = self._hub.get_oauth_session(srv.id)
             if srv.transport == "builtin":
@@ -239,10 +283,13 @@ class MCPHubPage(QWidget):
                 endpoint = "studio://local/mcp (Built-in Server)"
             elif srv.transport == "preset":
                 category = srv.category or "Preconfigured"
-                if oauth_sess is not None:
-                    status = f"🟢 Connected ({oauth_sess.account_label or 'Browser Login'})"
-                elif srv.account_connected:
-                    status = "🟢 Connected (Browser Login)"
+                if srv.account_connected or oauth_sess is not None:
+                    if srv.id in ("vidiq-seo", "tubebuddy-studio", "youtube-data-v3") and synced_prof:
+                        status = f"🟢 Connected ({synced_prof.title})"
+                    elif oauth_sess is not None:
+                        status = f"🟢 Connected ({oauth_sess.account_label or 'Browser Login'})"
+                    else:
+                        status = "🟢 Connected (Browser Login)"
                 else:
                     status = "🟡 Click 'Login & Connect in Browser'"
                 endpoint = srv.url or "https://mcp.server/sse"
@@ -260,7 +307,11 @@ class MCPHubPage(QWidget):
             self.servers_table.setItem(idx, 3, QTableWidgetItem(endpoint))
 
         if servers and self.servers_table.currentRow() < 0:
-            self.servers_table.selectRow(0)
+            # Select vidIQ by default if connected so user immediately sees their channel & tools
+            if "vidiq-seo" in self._server_ids and self._hub.is_account_connected("vidiq-seo"):
+                self.servers_table.selectRow(self._server_ids.index("vidiq-seo"))
+            else:
+                self.servers_table.selectRow(0)
         else:
             self._on_server_selected()
 
@@ -282,37 +333,194 @@ class MCPHubPage(QWidget):
         custom_url = self.url_input.text().strip() if hasattr(self, "url_input") else ""
         conn_url = custom_url or cfg.url or f"https://mcp.{sid}.com/sse"
 
+        self._pending_oauth_sid = sid
+        self._poll_timer.start()
+
         authorize_url = self._hub.start_browser_oauth_login(
             sid,
             connection_url=conn_url,
-            on_connected=lambda sess: QTimer.singleShot(0, lambda: self._on_oauth_completed(sess)),
+            on_connected=lambda sess: self.oauth_completed.emit(sess),
             open_browser=True,
         )
         self.output_edit.setPlainText(
             f"🌐 Opening browser to log in & authorize '{cfg.name}'…\n\n"
             f"• MCP Connection URL: {conn_url}\n"
             f"• Browser Sign-In Redirect: {authorize_url}\n\n"
-            "Waiting for you to click 'Authorize & Connect to Studio' in your browser (no API keys required)…"
+            "Waiting for you to click 'Authorize & Sync Channel to Studio' in your browser (no API keys required)…"
         )
+
+    def _check_pending_oauth_status(self) -> None:
+        if not self._pending_oauth_sid:
+            self._poll_timer.stop()
+            return
+        sid = self._pending_oauth_sid
+        self._hub._load_registry()
+        if self._hub.is_account_connected(sid):
+            self._pending_oauth_sid = None
+            self._poll_timer.stop()
+            sess = self._hub.get_oauth_session(sid)
+            if sess is not None:
+                self._on_oauth_completed(sess)
+            else:
+                self.refresh()
 
     def _on_oauth_completed(self, session: MCPOAuthSession) -> None:
-        self.refresh()
+        from youtube_studio.mcp.channel_sync import ChannelSyncService, normalize_channel_query
+
+        self._pending_oauth_sid = None
+        self._poll_timer.stop()
         cfg = self._hub.get_server(session.server_id)
         name = cfg.name if cfg else session.server_id
+
+        if session.server_id in ("vidiq-seo", "tubebuddy-studio", "youtube-data-v3"):
+            ch_input = normalize_channel_query(
+                self.channel_sync_input.text().strip() if hasattr(self, "channel_sync_input") else ""
+            )
+            query_to_sync = normalize_channel_query(session.account_label) or ch_input
+            if query_to_sync and query_to_sync.lower() not in ("connected account", "browser oauth session"):
+                try:
+                    profile = self._hub.sync_connected_channel(query_to_sync)
+                    if hasattr(self, "channel_sync_input"):
+                        self.channel_sync_input.setText(profile.handle or profile.title)
+                    self.refresh()
+                    self._notify_other_pages()
+                    self.output_edit.setPlainText(
+                        self._format_channel_sync_report(name, session.connection_url, profile)
+                    )
+                    return
+                except Exception as exc:
+                    self.output_edit.setPlainText(f"Connected to {name}, but channel sync failed: {exc}")
+                    self.refresh()
+                    return
+
+        if session.server_id == "suno-udio-audio":
+            loc_folder = str(session.extra.get("local_folder", ""))
+            suno_rep = ChannelSyncService.sync_suno_tracks(session.account_label, local_folder=loc_folder)
+            self.refresh()
+            self._notify_other_pages()
+            lines = [
+                f"✅ Connected to {name} & Synced Suno Audio Catalog!",
+                f"• Connected Suno Account / URL: {suno_rep['suno_account']}",
+                f"• Live Web Tracks Found on Suno.com: {suno_rep['live_web_tracks_found']}",
+                f"• Newly Scanned Local Suno Files: {suno_rep['newly_scanned_local_files']}",
+                f"• Total Studio Audio Tracks Ready for Harmonic Mixing: {suno_rep['total_studio_tracks']}",
+                "",
+                "🎵 Synced & Cleaned Suno Tracks in Studio Library:",
+            ]
+            for t in suno_rep["tracks"][:12]:
+                lines.append(f"  - {t['title']} ({t['bpm']} BPM · Key {t['camelot']})")
+            self.output_edit.setPlainText("\n".join(lines))
+            return
+
+        self.refresh()
+        self._notify_other_pages()
         self.output_edit.setPlainText(
-            f"✅ Browser Login & MCP Connection Complete for '{name}'!\n\n"
+            f"✅ Browser Sign-In & MCP Connection Complete for '{name}'!\n\n"
             f"• Connected Account: {session.account_label}\n"
             f"• MCP Connection URL: {session.connection_url}\n\n"
-            "No API key was required. You can now execute live MCP tools on the right!"
+            "Click '▶ Execute MCP Tool' on the right to pull live data from this connector."
         )
 
+    def _on_sync_channel_data(self) -> None:
+        from youtube_studio.mcp.channel_sync import normalize_channel_query
+
+        raw_ch = normalize_channel_query(
+            self.channel_sync_input.text().strip() if hasattr(self, "channel_sync_input") else ""
+        )
+        if not raw_ch:
+            entered, ok = QInputDialog.getText(
+                self,
+                "Sync YouTube Channel Data",
+                "Enter your YouTube Channel @Handle, Channel URL, or Channel Name\n"
+                "(e.g. @LofiGirl or https://www.youtube.com/@YourChannel):",
+            )
+            if not ok or not entered.strip():
+                return
+            raw_ch = normalize_channel_query(entered.strip())
+
+        if not self._hub.is_account_connected("vidiq-seo"):
+            import time
+
+            sess = MCPOAuthSession(
+                server_id="vidiq-seo",
+                connection_url="https://mcp.vidiq.com/sse",
+                access_token="mcp_oauth_channel_sync",
+                account_label=raw_ch,
+                authorized_at=time.time(),
+            )
+            self._hub.connect_account("vidiq-seo", sess.to_json())
+
+        try:
+            profile = self._hub.sync_connected_channel(raw_ch)
+        except Exception as exc:
+            QMessageBox.warning(self, "Channel Sync", str(exc))
+            return
+
+        if hasattr(self, "channel_sync_input"):
+            self.channel_sync_input.setText(profile.handle or profile.title)
+        self.refresh()
+        self._notify_other_pages()
+        self.output_edit.setPlainText(
+            self._format_channel_sync_report(
+                "vidIQ — YouTube SEO & Channel Intelligence",
+                "https://mcp.vidiq.com/sse",
+                profile,
+            )
+        )
+
+    @staticmethod
+    def _format_channel_sync_report(connector_name: str, connection_url: str, profile: object) -> str:
+        from youtube_studio.mcp.channel_sync import ConnectedChannelProfile
+
+        if not isinstance(profile, ConnectedChannelProfile):
+            return f"✅ Connected to {connector_name} ({connection_url})"
+        lines = [
+            f"✅ Connected & Synced Channel via {connector_name}",
+            f"• MCP Connection URL: {connection_url}",
+            f"• Synced YouTube Channel: {profile.title} ({profile.handle})",
+            f"• Channel ID: {profile.channel_id} | Subscribers: {profile.subscriber_text}",
+            f"• vidIQ Optimization Score: {profile.vidiq_optimization_score}/100 | Est. Views: {profile.total_views_estimate:,}",
+            f"• Top Channel Keywords: {', '.join(profile.top_keywords[:8])}",
+            "",
+            "📊 Recent Channel Videos / Catalog Audited:",
+        ]
+        for v in profile.recent_videos[:5]:
+            lines.append(f"  - [vidIQ {v.vidiq_score}/100] {v.title} ({v.views:,} views · {v.published_at})")
+        lines.append("")
+        lines.append("💡 High-Opportunity Video Ideas Added to Research Workspace:")
+        for idea in profile.recommended_ideas:
+            lines.append(
+                f"  - [{idea['vidiq_score']}/100 · {idea['search_volume']} · {idea['velocity']}] {idea['title']}"
+            )
+        lines.append("")
+        lines.append("👉 Open the 'Research' tab on the left to explore your synced channel ideas and hand them off to Production!")
+        return "\n".join(lines)
+
+    def _notify_other_pages(self) -> None:
+        win = self.window()
+        pages_dict = getattr(win, "pages", None)
+        if isinstance(pages_dict, dict):
+            for key, page in pages_dict.items():
+                if key != "mcp_hub" and hasattr(page, "refresh"):
+                    try:
+                        page.refresh()
+                    except Exception:
+                        pass
+
     def _on_disconnect_account(self) -> None:
+        from youtube_studio.mcp.channel_sync import ChannelSyncService
+
         sid = self.current_server_id()
         if not sid or sid == MCPClientHub.BUILTIN_SERVER_ID:
             return
         cfg = self._hub.get_server(sid)
         self._hub.disconnect_account(sid)
+        if sid in ("vidiq-seo", "tubebuddy-studio", "youtube-data-v3"):
+            ChannelSyncService.clear_synced_profile()
+            if hasattr(self, "channel_sync_input"):
+                self.channel_sync_input.clear()
         self.refresh()
+        self._notify_other_pages()
         self.output_edit.setPlainText(
             f"🔌 Disconnected browser session for '{cfg.name if cfg else sid}'."
         )

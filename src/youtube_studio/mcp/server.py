@@ -526,7 +526,7 @@ class StudioMCPServer:
                     first_media = media_svc.get(tracks[0].media_file_id)
                     if not first_media:
                         raise ValueError("Track media file not found")
-                    out_dir = get_settings().resolved_data_dir() / "jobs" / project_id / "shorts"
+                    out_dir = get_settings().resolved_output_dir() / project_id / "shorts"
                     clipper = ShortsClipperService()
                     short_res = clipper.create_highlight_short(
                         Path(first_media.path),
@@ -581,7 +581,7 @@ class StudioMCPServer:
                         approval_status="approved",
                     )
 
-                    out_dir = get_settings().resolved_data_dir() / "assets" / project_id
+                    out_dir = get_settings().resolved_output_dir() / project_id
                     out_path = out_dir / f"thumbnail_{palette}_{width}x{height}.png"
                     art_res = ArtworkGenerator().generate(
                         proj.name,

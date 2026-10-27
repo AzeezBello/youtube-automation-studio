@@ -67,17 +67,43 @@ class SettingsPage(QWidget):
         # Top row: Environment + Credentials
         top_row = QHBoxLayout()
 
-        env_group = QGroupBox("Environment & Hardware Profile")
+        env_group = QGroupBox("Environment, Output Location & Hardware Profile")
         env_form = QFormLayout(env_group)
         self.lbl_data_dir = QLabel("-")
         self.lbl_data_dir.setToolTip("Root directory where studio databases, assets, jobs, and backups are stored.")
         self.lbl_db_path = QLabel("-")
         self.lbl_db_path.setToolTip("Active SQLite database file path.")
+
+        out_row = QHBoxLayout()
+        self.input_output_dir = QLineEdit()
+        self.input_output_dir.setPlaceholderText("Select output folder for rendered videos & packages…")
+        self.input_output_dir.setToolTip(
+            "Directory where rendered videos, mixed audio, 9:16 Shorts, thumbnails, and export packages are saved."
+        )
+        out_row.addWidget(self.input_output_dir, stretch=1)
+
+        self.btn_browse_output = QPushButton("📁 Browse…")
+        self.btn_browse_output.setToolTip("Choose a custom folder on your computer to save rendered videos and packages.")
+        self.btn_browse_output.clicked.connect(self._on_browse_output_dir)
+        out_row.addWidget(self.btn_browse_output)
+
+        self.btn_save_output = QPushButton("Save")
+        self.btn_save_output.setObjectName("PrimaryButton")
+        self.btn_save_output.setToolTip("Save the configured output location.")
+        self.btn_save_output.clicked.connect(self._on_save_output_dir)
+        out_row.addWidget(self.btn_save_output)
+
+        self.btn_open_output = QPushButton("↗ Open")
+        self.btn_open_output.setToolTip("Open the output folder in Finder / File Explorer.")
+        self.btn_open_output.clicked.connect(self._on_open_output_dir)
+        out_row.addWidget(self.btn_open_output)
+
         self.lbl_profile = QLabel("-")
         self.lbl_profile.setToolTip("Configured resource profile (economy, balanced, or high_performance).")
         self.lbl_hardware = QLabel("-")
         self.lbl_hardware.setWordWrap(True)
         self.lbl_hardware.setToolTip("Live hardware probe results for CPU cores, RAM, and FFmpeg acceleration.")
+        env_form.addRow("Output Location:", out_row)
         env_form.addRow("Data Directory:", self.lbl_data_dir)
         env_form.addRow("SQLite Database:", self.lbl_db_path)
         env_form.addRow("Configured Profile:", self.lbl_profile)
@@ -222,6 +248,8 @@ class SettingsPage(QWidget):
 
     def refresh(self) -> None:
         settings = get_settings()
+        if hasattr(self, "input_output_dir"):
+            self.input_output_dir.setText(str(settings.resolved_output_dir()))
         self.lbl_data_dir.setText(str(settings.resolved_data_dir()))
         self.lbl_db_path.setText(str(settings.database_path()))
         self.lbl_profile.setText(settings.resource_profile.value)
@@ -364,11 +392,50 @@ class SettingsPage(QWidget):
         except Exception as exc:
             QMessageBox.critical(self, "Restore Failed", str(exc))
 
+    def _on_browse_output_dir(self) -> None:
+        current = self.input_output_dir.text().strip() or str(get_settings().resolved_output_dir())
+        chosen = QFileDialog.getExistingDirectory(
+            self,
+            "Select Output Location for Videos, Mixes & Packages",
+            current,
+        )
+        if not chosen:
+            return
+        self.input_output_dir.setText(chosen)
+        self._on_save_output_dir()
+
+    def _on_save_output_dir(self) -> None:
+        raw = self.input_output_dir.text().strip()
+        if not raw:
+            QMessageBox.warning(self, "Output Location", "Please enter or browse to a valid output folder.")
+            return
+        try:
+            saved = get_settings().set_output_dir(raw)
+            self.input_output_dir.setText(str(saved))
+            win = self.window()
+            pages_dict = getattr(win, "pages", None)
+            if isinstance(pages_dict, dict):
+                for key in ("production", "artwork", "dashboard"):
+                    page = pages_dict.get(key)
+                    if page is not None and hasattr(page, "refresh"):
+                        page.refresh()
+            QMessageBox.information(
+                self,
+                "Output Location Saved",
+                f"Rendered videos, mixes, Shorts, and release packages will now be saved to:\n{saved}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Could Not Set Output Location", str(exc))
+
+    def _on_open_output_dir(self) -> None:
+        out_path = get_settings().resolved_output_dir()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(out_path)))
+
     def _on_audit_manifest(self) -> None:
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "Select Export Package Manifest",
-            str(get_settings().resolved_data_dir()),
+            str(get_settings().resolved_output_dir()),
             "JSON Manifest (*.json)",
         )
         if not file_path:

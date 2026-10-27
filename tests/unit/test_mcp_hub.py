@@ -147,10 +147,21 @@ class MCPHubAndScannerTests(unittest.TestCase):
             self.assertIn("late night jazzhop", prompt_res.text)
 
     def test_mcp_client_hub_manages_builtin_and_external_servers(self) -> None:
-        with patch("youtube_studio.mcp.server.session_scope", side_effect=self._session_scope):
+        from youtube_studio.security.vault import CredentialVault
+
+        with (
+            patch("youtube_studio.mcp.server.session_scope", side_effect=self._session_scope),
+            patch("youtube_studio.mcp.channel_sync.session_scope", side_effect=self._session_scope),
+            patch.object(
+                 __import__("youtube_studio.mcp.channel_sync", fromlist=["ChannelSyncService"]).ChannelSyncService,
+                "_profile_cache_path",
+                return_value=self.root / "synced_channel_profile.json",
+            ),
+        ):
             hub = MCPClientHub(
                 registry_path=self.root / "mcp_servers.json",
                 builtin_server=StudioMCPServer(),
+                vault=CredentialVault(use_fallback=True),
             )
             servers = hub.list_servers()
             self.assertEqual(len(servers), 1)
@@ -218,6 +229,18 @@ class MCPHubAndScannerTests(unittest.TestCase):
             self.assertFalse(vidiq_res.is_error)
             self.assertIn("Account Connected", vidiq_res.structured_data["account_status"])
 
+            # Verify vidIQ Channel Audit tool returns synced channel data & research ideas
+            audit_res = hub.call_tool(
+                "vidiq-seo",
+                "vidiq_channel_audit",
+                {"channel_handle": "@GoldtoothPerry"},
+            )
+            self.assertFalse(audit_res.is_error)
+            ch_data = audit_res.structured_data["connected_channel"]
+            self.assertEqual(ch_data["handle"], "@GoldtoothPerry")
+            self.assertGreaterEqual(len(ch_data["recent_videos"]), 1)
+            self.assertGreaterEqual(len(ch_data["recommended_ideas"]), 3)
+
             hub.disconnect_account("vidiq-seo")
             self.assertFalse(hub.is_account_connected("vidiq-seo"))
 
@@ -264,6 +287,7 @@ class MCPHubAndScannerTests(unittest.TestCase):
             self.assertIn(".mov", summary.skipped_extensions)
 
     def test_light_and_dark_theme_manager(self) -> None:
+        from youtube_studio.config import Settings
         from youtube_studio.ui.theme import (
             DARK_STUDIO_STYLESHEET,
             LIGHT_STUDIO_STYLESHEET,
@@ -277,6 +301,14 @@ class MCPHubAndScannerTests(unittest.TestCase):
         ThemeManager.set_preference("dark")
         self.assertEqual(ThemeManager.resolve_effective_theme(), "dark")
         self.assertEqual(ThemeManager.get_stylesheet(), DARK_STUDIO_STYLESHEET)
+
+        # Verify custom output location persistence
+        custom_out = self.root / "my_custom_exports"
+        cfg = Settings(data_dir=self.root)
+        saved_out = cfg.set_output_dir(custom_out)
+        self.assertEqual(saved_out, custom_out.resolve())
+        self.assertEqual(cfg.resolved_output_dir(), custom_out.resolve())
+        self.assertTrue(custom_out.exists())
 
 
 if __name__ == "__main__":
