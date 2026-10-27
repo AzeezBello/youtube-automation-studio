@@ -118,43 +118,45 @@ class ProductionPage(QWidget):
         body = QHBoxLayout()
 
         left_col = QVBoxLayout()
-        track_btns = QHBoxLayout()
+        track_btns_top = QHBoxLayout()
         add_track_btn = QPushButton("Add Track…")
         add_track_btn.setObjectName("AccentButton")
         add_track_btn.setToolTip("Add an indexed audio track from the Music Library into this project's timeline.")
         add_track_btn.clicked.connect(self._on_add_track)
-        track_btns.addWidget(add_track_btn)
+        track_btns_top.addWidget(add_track_btn)
 
         move_up_btn = QPushButton("↑ Up")
         move_up_btn.setToolTip("Move the selected track earlier in the timeline order.")
         move_up_btn.clicked.connect(lambda: self._on_move_track(-1))
-        track_btns.addWidget(move_up_btn)
+        track_btns_top.addWidget(move_up_btn)
 
         move_down_btn = QPushButton("↓ Down")
         move_down_btn.setToolTip("Move the selected track later in the timeline order.")
         move_down_btn.clicked.connect(lambda: self._on_move_track(1))
-        track_btns.addWidget(move_down_btn)
+        track_btns_top.addWidget(move_down_btn)
 
         remove_track_btn = QPushButton("Remove")
         remove_track_btn.setToolTip("Remove the selected track from this project timeline.")
         remove_track_btn.clicked.connect(self._on_remove_track)
-        track_btns.addWidget(remove_track_btn)
+        track_btns_top.addWidget(remove_track_btn)
+        left_col.addLayout(track_btns_top)
 
+        track_btns_bottom = QHBoxLayout()
         auto_cue_btn = QPushButton("Auto-Cue Silence Trim")
         auto_cue_btn.setToolTip(
             "Automatically detect and trim leading/trailing silence on all tracks in this project."
         )
         auto_cue_btn.clicked.connect(self._on_auto_cue_trim)
-        track_btns.addWidget(auto_cue_btn)
+        track_btns_bottom.addWidget(auto_cue_btn)
 
         harmonic_btn = QPushButton("Smart Harmonic Sort (BPM+Key)")
         harmonic_btn.setToolTip(
             "Reorder tracks for smooth Camelot Wheel harmonic compatibility and gradual tempo progression."
         )
         harmonic_btn.clicked.connect(self._on_harmonic_sort)
-        track_btns.addWidget(harmonic_btn)
+        track_btns_bottom.addWidget(harmonic_btn)
 
-        left_col.addLayout(track_btns)
+        left_col.addLayout(track_btns_bottom)
 
         self.tracks_table = QTableWidget(0, 7)
         self.tracks_table.setAlternatingRowColors(True)
@@ -264,7 +266,7 @@ class ProductionPage(QWidget):
         self.chk_zoom.setToolTip("Applies subtle continuous camera zoom/pan so the background never looks static.")
         fx_layout.addRow(self.chk_zoom)
 
-        self.chk_vintage = QCheckBox("Analog Film Grain & Warm Vignette")
+        self.chk_vintage = QCheckBox("Analog Film Grain && Warm Vignette")
         self.chk_vintage.setToolTip("Adds organic film grain texture and subtle edge vignetting.")
         fx_layout.addRow(self.chk_vintage)
 

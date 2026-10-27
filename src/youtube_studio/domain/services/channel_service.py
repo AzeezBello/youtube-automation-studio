@@ -21,10 +21,16 @@ class ChannelService:
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def create(self, name: str, brand: Optional[ChannelBrandConfig] = None) -> Channel:
-        brand = brand or ChannelBrandConfig()
+    def create(
+        self,
+        name: str,
+        brand: Optional[ChannelBrandConfig] = None,
+        *,
+        brand_config: Optional[ChannelBrandConfig] = None,
+    ) -> Channel:
+        resolved_brand = brand or brand_config or ChannelBrandConfig()
         now = _utcnow()
-        domain = Channel(name=name, brand_config=brand, created_at=now, updated_at=now)
+        domain = Channel(name=name, brand_config=resolved_brand, created_at=now, updated_at=now)
         orm = ChannelORM(
             id=domain.id,
             name=domain.name,

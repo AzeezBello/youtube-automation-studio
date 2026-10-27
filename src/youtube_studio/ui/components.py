@@ -41,12 +41,13 @@ class EmptyStateWidget(QFrame):
 
         header_row = QHBoxLayout()
         title_lbl = QLabel(f"✦  {title}")
+        title_lbl.setObjectName("EmptyStateTitle")
         title_lbl.setFont(QFont("", 14, QFont.Weight.Bold))
-        title_lbl.setStyleSheet("color: #a5b4fc;")
         header_row.addWidget(title_lbl, stretch=1)
 
         if action_label and on_action:
-            self.action_btn = QPushButton(action_label)
+            safe_action = action_label.replace("&", "&&") if "&&" not in action_label else action_label
+            self.action_btn = QPushButton(safe_action)
             self.action_btn.setObjectName("PrimaryButton")
             if action_tooltip:
                 self.action_btn.setToolTip(action_tooltip)
@@ -56,7 +57,10 @@ class EmptyStateWidget(QFrame):
             self.action_btn = None
 
         if secondary_label and on_secondary:
-            self.secondary_btn = QPushButton(secondary_label)
+            safe_secondary = (
+                secondary_label.replace("&", "&&") if "&&" not in secondary_label else secondary_label
+            )
+            self.secondary_btn = QPushButton(safe_secondary)
             self.secondary_btn.setObjectName("AccentButton")
             if secondary_tooltip:
                 self.secondary_btn.setToolTip(secondary_tooltip)
@@ -68,15 +72,16 @@ class EmptyStateWidget(QFrame):
         layout.addLayout(header_row)
 
         desc_lbl = QLabel(description)
+        desc_lbl.setObjectName("EmptyStateDesc")
         desc_lbl.setWordWrap(True)
-        desc_lbl.setStyleSheet("color: #cbd5e1;")
         layout.addWidget(desc_lbl)
 
         if tips:
-            tips_html = "<ul style='margin-top:4px; margin-bottom:2px; color:#94a3b8;'>" + "".join(
+            tips_html = "<ul style='margin-top:4px; margin-bottom:2px;'>" + "".join(
                 f"<li>{tip}</li>" for tip in tips
             ) + "</ul>"
             tips_lbl = QLabel(tips_html)
+            tips_lbl.setObjectName("EmptyStateTips")
             tips_lbl.setWordWrap(True)
             tips_lbl.setTextFormat(Qt.TextFormat.RichText)
             layout.addWidget(tips_lbl)
@@ -103,17 +108,17 @@ class MetricCard(QFrame):
         layout.setSpacing(4)
 
         self.title_label = QLabel(title)
-        self.title_label.setStyleSheet("color: #94a3b8; font-size: 12px; font-weight: 600;")
+        self.title_label.setObjectName("MetricTitle")
         layout.addWidget(self.title_label)
 
         self.value_label = QLabel(value)
+        self.value_label.setObjectName("MetricValue")
         self.value_label.setFont(QFont("", 20, QFont.Weight.Bold))
-        self.value_label.setStyleSheet("color: #f8fafc;")
         layout.addWidget(self.value_label)
 
         self.subtitle_label = QLabel(subtitle)
+        self.subtitle_label.setObjectName("MetricSubtitle")
         self.subtitle_label.setWordWrap(True)
-        self.subtitle_label.setStyleSheet("color: #64748b; font-size: 11px;")
         layout.addWidget(self.subtitle_label)
 
     def set_metric(self, value: str, subtitle: str = "") -> None:

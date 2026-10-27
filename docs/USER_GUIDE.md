@@ -34,8 +34,10 @@ Profiles (`YTS_RESOURCE_PROFILE`):
 
 ## 2. Music Library & Harmonic Audio Intelligence
 
-Navigate to **Music Library** to index your local audio (`WAV`, `MP3`, `FLAC`, `OGG`, `M4A`, `AAC`) and visual assets:
-1. Click **Scan Folder…** to recursively index audio files, durations, sample rates, bitrates, and waveforms.
+Navigate to **Music Library** to index your local audio (`WAV`, `MP3`, `FLAC`, `OGG`, `M4A`, `AAC`, `AIFF`, `OPUS`) tracks:
+1. Click **Scan Folder** to recursively index audio files, durations, sample rates, bitrates, and waveforms.
+   - **Audio-Only Filtering**: Video containers (`.mp4`, `.mov`, `.mkv`, `.webm`, `.avi`, `.flv`, `.m4v`) are strictly excluded so only pure music files are loaded into the Music Library.
+   - **Unicode & Curly-Quote Path Resolution**: Automatically resolves folders with curly quotes (`“ ” ‘ ’`) and NFD/NFC macOS filenames.
 2. **Audio Intelligence (`DJIntelligenceService`)**:
    - **Auto-BPM & Camelot Key Detection**: Estimates tempo (BPM) and musical key (`1A`–`12B` Camelot wheel).
    - **Harmonic Tracklist Ordering**: Automatically sequences your mix so adjacent tracks share identical or neighbor Camelot keys (`±1` step or relative A/B) and minimal BPM jumps.
@@ -91,12 +93,26 @@ Navigate to **Artwork** to manage local AI models (`ModelRegistryService`) and g
 
 ---
 
-## 7. Settings, Backup/Restore & Desktop Installers
+## 7. MCP Hub — Bidirectional Model Context Protocol & Browser OAuth Redirect
 
-Navigate to **Settings** to:
-- Store your YouTube Data API v3 key in the **Credential Vault** (OS Keychain with encrypted local fallback).
-- Create and restore atomic **SQLite + Config `.zip` Snapshots** verified by SHA-256 checksums.
-- Run the **Compliance Review Gate** on any export package manifest and purge expired 30-day API cache rows.
+Navigate to **MCP Hub** to use both directions of the Model Context Protocol (`2024-11-05`):
+1. **Studio as an MCP Server (`youtube-studio-mcp`)**:
+   - Exposes **10 MCP tools** (`list_channels`, `create_channel`, `scan_music_library`, `list_audio_tracks`, `search_and_cluster_topics`, `build_harmonic_mix_project`, `generate_project_seo_and_artwork`, `run_production_pipeline`, `export_short_highlight`, `audit_compliance_manifest`), **4 `studio://` resources**, and **2 prompt templates** over JSON-RPC 2.0 stdio.
+   - Click **Copy Host Config** to copy the `mcpServers` JSON snippet for Claude Desktop, Cursor, or Antigravity.
+2. **Preconfigured MCP Connectors (Connection URL + Browser Login Redirect)**:
+   - Includes **9 preconfigured creator MCP connectors** with their MCP Connection URLs pre-populated (`https://mcp.vidiq.com/sse`, `https://mcp.tubebuddy.com/sse`, `https://mcp.youtube.com/sse`, `https://mcp.suno.com/sse`, `https://mcp.elevenlabs.io/sse`, `https://mcp.replicate.com/sse`, `https://mcp.search.brave.com/sse`, `https://mcp.drive.google.com/sse`, `https://mcp.discord.com/sse`).
+   - **No API Keys Required**: Select any connector (or paste a custom MCP Connection URL) and click **🌐 Login & Connect in Browser** to authenticate via OAuth 2.1 + PKCE loopback redirect (`http://127.0.0.1:<port>/mcp/oauth/callback`).
+
+---
+
+## 8. Settings, Light/Dark Themes, Auto-Update & Desktop Installers
+
+- **Light / Dark / System Themes**: Click the **☀️ Light / 🌙 Dark** button in the top header bar or use **View → Follow System Theme** to switch themes dynamically.
+- **Responsive Desktop Window**: All 7 workspaces automatically reflow between wide desktop split-panes and compact stacked layouts as you resize the window.
+- **Settings & Snapshots**:
+  - Create and restore atomic **SQLite + Config `.zip` Snapshots** verified by SHA-256 checksums.
+  - Run the **Compliance Review Gate** on any export package manifest and purge expired 30-day API cache rows.
+  - Check for software updates across `stable` and `beta` channels (`UpdateService`) or open the static **Download & Update Website** (`website/index.html`).
 
 ### Building Native Desktop Installers
 - **macOS (`.app` and `.dmg`)**:

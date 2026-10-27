@@ -142,46 +142,51 @@ class DashboardPage(QWidget):
             action_tooltip="Launch the 4-step Onboarding Wizard to set up your first channel and preferences.",
             on_action=lambda: self._on_open_onboarding() if self._on_open_onboarding else None,
             secondary_label="Start Guided Product Tour",
-            secondary_tooltip="Take an interactive 6-step tour of all studio workspaces.",
+            secondary_tooltip="Take an interactive 7-step tour of all studio workspaces.",
             on_secondary=lambda: self._on_start_tour() if self._on_start_tour else None,
         )
         layout.addWidget(self.empty_state)
 
-        # Quick Actions Bar
+        # Quick Actions Bar (2 rows of 3 buttons so it never overflows horizontally)
         quick_group = QGroupBox("Quick Workflow Actions")
-        quick_row = QHBoxLayout(quick_group)
+        quick_outer = QVBoxLayout(quick_group)
+        quick_outer.setSpacing(8)
+        quick_row_top = QHBoxLayout()
+        quick_row_bottom = QHBoxLayout()
 
         btn_research = QPushButton("1. Discover Topics (Research)")
         btn_research.setToolTip("Open Research Workspace to search keywords, cluster topics, and save video ideas.")
         btn_research.clicked.connect(lambda: self._nav(1))
-        quick_row.addWidget(btn_research)
+        quick_row_top.addWidget(btn_research)
 
         btn_library = QPushButton("2. Scan Audio (Music Library)")
         btn_library.setToolTip("Open Music Library to scan folders and analyze track BPM & Camelot keys.")
         btn_library.clicked.connect(lambda: self._nav(2))
-        quick_row.addWidget(btn_library)
+        quick_row_top.addWidget(btn_library)
 
-        btn_produce = QPushButton("3. Build Mix & Video (Production)")
+        btn_produce = QPushButton("3. Build Mix && Video (Production)")
         btn_produce.setObjectName("PrimaryButton")
         btn_produce.setToolTip("Open Production Studio to sequence tracks, configure visualizers, and render videos.")
         btn_produce.clicked.connect(lambda: self._nav(3))
-        quick_row.addWidget(btn_produce)
+        quick_row_top.addWidget(btn_produce)
 
-        btn_artwork = QPushButton("4. Generate Artwork & SEO (AI Studio)")
+        btn_artwork = QPushButton("4. Generate Artwork && SEO (AI Studio)")
         btn_artwork.setToolTip("Open Artwork & Local AI Studio to generate 16:9 / 9:16 thumbnails and metadata.")
         btn_artwork.clicked.connect(lambda: self._nav(4))
-        quick_row.addWidget(btn_artwork)
+        quick_row_bottom.addWidget(btn_artwork)
 
-        btn_mcp = QPushButton("5. Connect MCP (vidIQ & AI)")
+        btn_mcp = QPushButton("5. Connect MCP (vidIQ && AI)")
         btn_mcp.setToolTip("Open MCP Hub to connect preconfigured vidIQ, TubeBuddy, Suno, or external MCP servers.")
         btn_mcp.clicked.connect(lambda: self._nav(5))
-        quick_row.addWidget(btn_mcp)
+        quick_row_bottom.addWidget(btn_mcp)
 
-        btn_settings = QPushButton("6. Backup & Compliance Gate")
+        btn_settings = QPushButton("6. Backup && Compliance Gate")
         btn_settings.setToolTip("Open Settings to manage API credentials, create DB snapshots, and audit export manifests.")
         btn_settings.clicked.connect(lambda: self._nav(6))
-        quick_row.addWidget(btn_settings)
+        quick_row_bottom.addWidget(btn_settings)
 
+        quick_outer.addLayout(quick_row_top)
+        quick_outer.addLayout(quick_row_bottom)
         layout.addWidget(quick_group)
 
         # Detailed Status Box
@@ -329,10 +334,7 @@ class MainWindow(QMainWindow):
         header_layout.addWidget(self.brand_title)
 
         self.version_badge = QLabel(f"v{__version__} · Local-First Pro Studio")
-        self.version_badge.setStyleSheet(
-            "background-color: #1e293b; color: #94a3b8; padding: 3px 8px; "
-            "border-radius: 4px; font-size: 11px;"
-        )
+        self.version_badge.setObjectName("VersionBadge")
         header_layout.addWidget(self.version_badge)
         header_layout.addStretch()
 
@@ -519,7 +521,7 @@ class MainWindow(QMainWindow):
             on_start_tour=self.start_product_tour,
             on_completed=self._refresh_all_pages,
         )
-        dlg.setStyleSheet(DARK_STUDIO_STYLESHEET)
+        dlg.setStyleSheet(ThemeManager.get_stylesheet())
         if QApplication.platformName() != "offscreen":
             dlg.exec()
         return dlg

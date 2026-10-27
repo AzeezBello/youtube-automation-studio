@@ -193,7 +193,7 @@ class ArtworkPage(QWidget):
 
         art_layout.addLayout(art_form)
 
-        gen_art_btn = QPushButton("Generate Thumbnail & Artwork")
+        gen_art_btn = QPushButton("Generate Thumbnail && Artwork")
         gen_art_btn.setObjectName("AccentButton")
         gen_art_btn.setToolTip("Render and register a new PNG thumbnail asset for the selected project.")
         gen_art_btn.clicked.connect(self._on_generate_artwork)

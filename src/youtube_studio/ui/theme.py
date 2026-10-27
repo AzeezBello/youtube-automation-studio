@@ -8,7 +8,7 @@ from typing import Optional
 from youtube_studio.config import get_settings
 
 DARK_STUDIO_STYLESHEET = """
-QMainWindow, QDialog, QScrollArea {
+QMainWindow, QDialog, QScrollArea, QWidget#ScrollViewport, QWidget#WorkspacePage {
     background-color: #0f1117;
     color: #e6e9f0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -38,10 +38,58 @@ QFrame#MetricCard {
     border-radius: 8px;
 }
 
+QLabel#MetricTitle {
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QLabel#MetricValue {
+    color: #f8fafc;
+}
+
+QLabel#MetricSubtitle {
+    color: #64748b;
+    font-size: 11px;
+}
+
 QFrame#EmptyStateCard {
     background-color: #151822;
     border: 1px dashed #3b425c;
     border-radius: 10px;
+}
+
+QLabel#EmptyStateTitle {
+    color: #a5b4fc;
+}
+
+QLabel#EmptyStateDesc {
+    color: #cbd5e1;
+}
+
+QLabel#EmptyStateTips {
+    color: #94a3b8;
+}
+
+QLabel#TourTitle {
+    color: #f8fafc;
+}
+
+QLabel#TourSummary {
+    color: #e2e8f0;
+}
+
+QLabel#TourTip {
+    color: #93c5fd;
+    font-size: 12px;
+}
+
+QLabel#VersionBadge {
+    background-color: #1e293b;
+    color: #94a3b8;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
 }
 
 /* Sidebar Navigation */
@@ -214,7 +262,7 @@ QMenu::item:selected {
 
 
 LIGHT_STUDIO_STYLESHEET = """
-QMainWindow, QDialog, QScrollArea {
+QMainWindow, QDialog, QScrollArea, QWidget#ScrollViewport, QWidget#WorkspacePage {
     background-color: #f8fafc;
     color: #0f172a;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -244,10 +292,58 @@ QFrame#MetricCard {
     border-radius: 8px;
 }
 
+QLabel#MetricTitle {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+QLabel#MetricValue {
+    color: #0f172a;
+}
+
+QLabel#MetricSubtitle {
+    color: #64748b;
+    font-size: 11px;
+}
+
 QFrame#EmptyStateCard {
     background-color: #f1f5f9;
     border: 1px dashed #94a3b8;
     border-radius: 10px;
+}
+
+QLabel#EmptyStateTitle {
+    color: #4338ca;
+}
+
+QLabel#EmptyStateDesc {
+    color: #1e293b;
+}
+
+QLabel#EmptyStateTips {
+    color: #475569;
+}
+
+QLabel#TourTitle {
+    color: #1e1b4b;
+}
+
+QLabel#TourSummary {
+    color: #1e293b;
+}
+
+QLabel#TourTip {
+    color: #3730a3;
+    font-size: 12px;
+}
+
+QLabel#VersionBadge {
+    background-color: #e2e8f0;
+    color: #334155;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 11px;
 }
 
 /* Sidebar Navigation */

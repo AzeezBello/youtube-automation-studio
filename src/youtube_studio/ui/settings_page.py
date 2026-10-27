@@ -326,13 +326,16 @@ class SettingsPage(QWidget):
 
     def _on_create_backup(self) -> None:
         try:
-            archive, manifest = self._backup_service.create_backup()
+            note = self.input_backup_note.text().strip()
+            archive, manifest = self._backup_service.create_backup(note=note)
             self.input_backup_note.clear()
             self._refresh_backups_list()
             QMessageBox.information(
                 self,
                 "Backup Created",
-                f"Atomic snapshot backup created:\n{archive}\nSHA-256: {manifest.database_sha256[:16]}…",
+                f"Atomic snapshot backup created:\n{archive}\n"
+                f"{('Note: ' + manifest.note + chr(10)) if manifest.note else ''}"
+                f"SHA-256: {manifest.database_sha256[:16]}…",
             )
         except Exception as exc:
             QMessageBox.critical(self, "Backup Failed", str(exc))

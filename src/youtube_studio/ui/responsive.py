@@ -9,7 +9,6 @@ from PySide6.QtWidgets import (
     QBoxLayout,
     QFrame,
     QScrollArea,
-    QScroller,
     QTableWidget,
     QWidget,
 )
@@ -18,20 +17,16 @@ MOBILE_BREAKPOINT_PX = 840
 
 
 def wrap_in_responsive_scroll(page: QWidget, parent: Optional[QWidget] = None) -> QScrollArea:
-    """Wrap a workspace page in a frameless, touch-scrollable QScrollArea."""
+    """Wrap a workspace page in a frameless, vertically scrollable QScrollArea that always fits the viewport width."""
+    page.setObjectName("WorkspacePage")
     scroll = QScrollArea(parent)
+    scroll.setObjectName("WorkspaceScrollArea")
     scroll.setWidgetResizable(True)
     scroll.setFrameShape(QFrame.Shape.NoFrame)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
     scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
     scroll.setWidget(page)
-    try:
-        QScroller.grabGesture(
-            scroll.viewport(),
-            QScroller.ScrollerGestureType.TouchGesture,
-        )
-    except Exception:
-        pass
+    scroll.viewport().setObjectName("ScrollViewport")
     return scroll
 
 

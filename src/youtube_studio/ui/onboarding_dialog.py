@@ -131,16 +131,16 @@ class OnboardingDialog(QDialog):
 
         sub = QLabel(
             "Your self-contained, local-first desktop studio for multi-channel YouTube research, "
-            "harmonic audio mixing, reactive video production, and AI metadata packaging."
+            "harmonic audio mixing, reactive video production, MCP connectors, and AI metadata packaging."
         )
         sub.setWordWrap(True)
-        sub.setStyleSheet("color: #cbd5e1; font-size: 14px;")
+        sub.setStyleSheet("font-size: 14px;")
         layout.addWidget(sub)
 
-        group = QGroupBox("How the 5-Stage Creator Pipeline Works")
+        group = QGroupBox("How the 6-Stage Creator Pipeline Works")
         g_layout = QVBoxLayout(group)
         steps_html = (
-            "<ol style='line-height: 1.55; color: #e2e8f0;'>"
+            "<ol style='line-height: 1.55;'>"
             "<li><b>Research Workspace:</b> Discover high-demand topics, cluster keywords locally, "
             "and hand off saved ideas into production projects.</li>"
             "<li><b>Music Library:</b> Scan your local audio folders (WAV, MP3, FLAC, M4A, AAC, OGG) "
@@ -149,6 +149,8 @@ class OnboardingDialog(QDialog):
             "cue trimming, bass-swap EQ crossfades, audio visualizers, and 9:16 Short highlights.</li>"
             "<li><b>Artwork & Local AI:</b> Generate 16:9 & 9:16 thumbnails and SEO titles/chapters/tags "
             "using local models or zero-dependency procedural templates.</li>"
+            "<li><b>MCP Hub (Browser Login):</b> Connect preconfigured vidIQ, TubeBuddy, Suno, ElevenLabs & more "
+            "via Connection URL + Browser Redirect (no API keys required).</li>"
             "<li><b>100% Manual Publishing Control:</b> Audit your export manifest through the Compliance "
             "Review Gate and upload on your own schedule.</li>"
             "</ol>"
@@ -175,7 +177,6 @@ class OnboardingDialog(QDialog):
             "so you can manage multiple brands from one studio."
         )
         sub.setWordWrap(True)
-        sub.setStyleSheet("color: #cbd5e1;")
         layout.addWidget(sub)
 
         form_group = QGroupBox("Channel Brand Profile")
@@ -207,7 +208,7 @@ class OnboardingDialog(QDialog):
         form.addRow(self.create_channel_btn)
 
         self.channel_status_lbl = QLabel("")
-        self.channel_status_lbl.setStyleSheet("color: #34d399;")
+        self.channel_status_lbl.setStyleSheet("color: #10b981; font-weight: 600;")
         form.addRow(self.channel_status_lbl)
 
         layout.addWidget(form_group)
@@ -219,7 +220,7 @@ class OnboardingDialog(QDialog):
         layout = QVBoxLayout(page)
         layout.setSpacing(10)
 
-        title = QLabel("System Hardware & Optional API Key")
+        title = QLabel("System Hardware & MCP / Research Setup")
         title.setFont(QFont("", 18, QFont.Weight.Bold))
         layout.addWidget(title)
 
@@ -232,7 +233,7 @@ class OnboardingDialog(QDialog):
                 f"<b>CPU & Memory:</b> {hw.cpu_count} cores · {hw.total_ram_gb:.1f} GB RAM · "
                 f"{hw.free_disk_gb:.1f} GB free disk<br>"
                 f"<b>FFmpeg HW Acceleration:</b> {'Available' if hw.has_ffmpeg_hwaccel else 'Software / PCM Fallback'}<br>"
-                f"<b>Recommended Profile:</b> <span style='color:#818cf8'>{hw.recommended_profile.value}</span>"
+                f"<b>Recommended Profile:</b> <span style='color:#6366f1'>{hw.recommended_profile.value}</span>"
             )
         except Exception as exc:
             hw_text = f"Hardware probe summary: {exc}"
@@ -241,14 +242,14 @@ class OnboardingDialog(QDialog):
         hw_layout.addWidget(hw_lbl)
         layout.addWidget(hw_group)
 
-        api_group = QGroupBox("Optional: YouTube Data API v3 Key (For Live Research)")
+        api_group = QGroupBox("MCP Browser Redirects & Optional YouTube Data API v3 Key")
         api_layout = QVBoxLayout(api_group)
         api_desc = QLabel(
-            "You can use the offline research provider right away, or store a YouTube Data API v3 key "
-            "in the secure Credential Vault for live public metadata search."
+            "Preconfigured MCP connectors (vidIQ, TubeBuddy, Suno, ElevenLabs, etc.) use Browser Login Redirects "
+            "in the MCP Hub with no API keys required. Optionally, you can also save a YouTube Data API v3 key below."
         )
         api_desc.setWordWrap(True)
-        api_desc.setStyleSheet("color: #94a3b8;")
+        api_desc.setStyleSheet("color: #64748b;")
         api_layout.addWidget(api_desc)
 
         api_row = QHBoxLayout()
@@ -265,7 +266,7 @@ class OnboardingDialog(QDialog):
         api_layout.addLayout(api_row)
 
         self.api_status_lbl = QLabel("")
-        self.api_status_lbl.setStyleSheet("color: #34d399;")
+        self.api_status_lbl.setStyleSheet("color: #10b981; font-weight: 600;")
         api_layout.addWidget(self.api_status_lbl)
 
         layout.addWidget(api_group)
@@ -283,29 +284,29 @@ class OnboardingDialog(QDialog):
 
         desc = QLabel(
             "Your local database and workspace directories are initialized. "
-            "Would you like to take a quick interactive Product Tour of the 6 studio workspaces?"
+            "Would you like to take a quick interactive Product Tour of the 7 studio workspaces?"
         )
         desc.setWordWrap(True)
-        desc.setStyleSheet("color: #cbd5e1; font-size: 14px;")
+        desc.setStyleSheet("font-size: 14px;")
         layout.addWidget(desc)
 
         tour_box = QGroupBox("Guided Product Tour & Next Steps")
         t_layout = QVBoxLayout(tour_box)
 
-        self.chk_launch_tour = QCheckBox("Start the interactive 6-step Guided Product Tour now (Recommended)")
+        self.chk_launch_tour = QCheckBox("Start the interactive 7-step Guided Product Tour now (Recommended)")
         self.chk_launch_tour.setChecked(True)
         self.chk_launch_tour.setToolTip(
-            "Walks you through Dashboard, Research, Music Library, Production, Artwork, and Settings."
+            "Walks you through Dashboard, Research, Music Library, Production, Artwork, MCP Hub, and Settings."
         )
         t_layout.addWidget(self.chk_launch_tour)
 
         tips = QLabel(
             "• Hover over any button, dropdown, or setting to see helpful <b>Tooltips</b>.<br>"
             "• Blank tables automatically show an <b>Empty State Guide</b> with tips and quick actions.<br>"
-            "• You can re-open this Onboarding Flow or the Product Tour anytime from the top bar or <b>Help</b> menu."
+            "• Switch between <b>Dark Mode</b> and <b>Light Mode</b> anytime from the top header bar."
         )
         tips.setWordWrap(True)
-        tips.setStyleSheet("color: #94a3b8; margin-top: 6px;")
+        tips.setStyleSheet("color: #64748b; margin-top: 6px;")
         t_layout.addWidget(tips)
 
         layout.addWidget(tour_box)
@@ -326,7 +327,7 @@ class OnboardingDialog(QDialog):
         )
         try:
             with session_scope() as session:
-                ch = ChannelService(session).create(name, brand_config=brand)
+                ch = ChannelService(session).create(name, brand=brand)
             self.channel_status_lbl.setText(f"✓ Created channel '{ch.name}' ({palette})")
             self.channel_name_input.clear()
         except Exception as exc:

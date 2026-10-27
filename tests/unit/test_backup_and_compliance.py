@@ -221,7 +221,12 @@ class TestBackupAndCompliance(unittest.TestCase):
             self.assertEqual(win.stack.currentIndex(), expected_step)
         win.tour_banner.stop_tour()
 
-        # Verify OnboardingDialog 4-step wizard
+        # Verify Light & Dark theme switching and OnboardingDialog 4-step wizard
+        win.apply_theme("light")
+        self.assertEqual(win.btn_theme.text(), "🌙 Dark")
+        win.apply_theme("dark")
+        self.assertEqual(win.btn_theme.text(), "☀️ Light")
+
         dlg = win.open_onboarding_dialog()
         self.assertEqual(dlg.stack.count(), 4)
         self.assertEqual(dlg.stack.currentIndex(), 0)

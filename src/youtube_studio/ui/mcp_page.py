@@ -106,39 +106,41 @@ class MCPHubPage(QWidget):
         url_row.addWidget(self.url_input, stretch=1)
         srv_layout.addLayout(url_row)
 
-        srv_btns = QHBoxLayout()
-        self.btn_connect_account = QPushButton("🌐 Login & Connect in Browser")
+        srv_btns_top = QHBoxLayout()
+        self.btn_connect_account = QPushButton("🌐 Login && Connect in Browser")
         self.btn_connect_account.setObjectName("PrimaryButton")
         self.btn_connect_account.setToolTip(
             "Use the MCP Connection URL above and redirect to your browser to log in and authorize (no API keys required)."
         )
         self.btn_connect_account.clicked.connect(self._on_connect_account)
-        srv_btns.addWidget(self.btn_connect_account)
+        srv_btns_top.addWidget(self.btn_connect_account, stretch=2)
 
         self.btn_disconnect_account = QPushButton("Disconnect")
         self.btn_disconnect_account.setToolTip("Disconnect the browser OAuth session for the selected MCP connector.")
         self.btn_disconnect_account.clicked.connect(self._on_disconnect_account)
-        srv_btns.addWidget(self.btn_disconnect_account)
-
-        self.btn_add_server = QPushButton("+ Add MCP URL…")
-        self.btn_add_server.setToolTip("Add a custom remote MCP Connection URL or local stdio server.")
-        self.btn_add_server.clicked.connect(self._on_add_external_server)
-        srv_btns.addWidget(self.btn_add_server)
+        srv_btns_top.addWidget(self.btn_disconnect_account)
 
         self.btn_ping_server = QPushButton("Ping / Test")
         self.btn_ping_server.setToolTip("Test connection and list capabilities for the selected MCP server.")
         self.btn_ping_server.clicked.connect(self._on_ping_selected)
-        srv_btns.addWidget(self.btn_ping_server)
+        srv_btns_top.addWidget(self.btn_ping_server)
+        srv_layout.addLayout(srv_btns_top)
 
-        self.btn_copy_config = QPushButton("Copy Host Config")
+        srv_btns_bottom = QHBoxLayout()
+        self.btn_add_server = QPushButton("+ Add Custom MCP URL…")
+        self.btn_add_server.setToolTip("Add a custom remote MCP Connection URL or local stdio server.")
+        self.btn_add_server.clicked.connect(self._on_add_external_server)
+        srv_btns_bottom.addWidget(self.btn_add_server)
+
+        self.btn_copy_config = QPushButton("Copy Studio Host Config (JSON)")
         self.btn_copy_config.setObjectName("AccentButton")
         self.btn_copy_config.setToolTip(
             "Copy the mcpServers JSON configuration snippet so external AI hosts can launch youtube-studio-mcp."
         )
         self.btn_copy_config.clicked.connect(self._on_copy_host_config)
-        srv_btns.addWidget(self.btn_copy_config)
+        srv_btns_bottom.addWidget(self.btn_copy_config)
 
-        srv_layout.addLayout(srv_btns)
+        srv_layout.addLayout(srv_btns_bottom)
 
         self.servers_table = QTableWidget(0, 4)
         self.servers_table.setAlternatingRowColors(True)

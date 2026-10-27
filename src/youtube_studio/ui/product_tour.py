@@ -1,4 +1,4 @@
-"""Guided Product Tour banner that walks the user through all 6 workspaces."""
+"""Guided Product Tour banner that walks the user through all 7 workspaces."""
 
 from __future__ import annotations
 
@@ -115,8 +115,8 @@ class ProductTourBanner(QFrame):
         top_row.addWidget(badge)
 
         self.title_lbl = QLabel("")
+        self.title_lbl.setObjectName("TourTitle")
         self.title_lbl.setFont(QFont("", 14, QFont.Weight.Bold))
-        self.title_lbl.setStyleSheet("color: #f8fafc;")
         top_row.addWidget(self.title_lbl, stretch=1)
 
         self.prev_btn = QPushButton("← Previous")
@@ -138,14 +138,14 @@ class ProductTourBanner(QFrame):
         root.addLayout(top_row)
 
         self.summary_lbl = QLabel("")
+        self.summary_lbl.setObjectName("TourSummary")
         self.summary_lbl.setWordWrap(True)
-        self.summary_lbl.setStyleSheet("color: #e2e8f0;")
         root.addWidget(self.summary_lbl)
 
         self.tip_lbl = QLabel("")
+        self.tip_lbl.setObjectName("TourTip")
         self.tip_lbl.setWordWrap(True)
         self.tip_lbl.setTextFormat(Qt.TextFormat.RichText)
-        self.tip_lbl.setStyleSheet("color: #93c5fd; font-size: 12px;")
         root.addWidget(self.tip_lbl)
 
     @property

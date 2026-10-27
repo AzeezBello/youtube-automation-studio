@@ -30,6 +30,7 @@ class BackupManifest:
     database_filename: str
     database_sha256: str
     included_files: list[str] = field(default_factory=list)
+    note: str = ""
 
 
 class BackupService:
@@ -58,6 +59,7 @@ class BackupService:
         *,
         output_zip_path: Optional[Path] = None,
         extra_files: Optional[list[Path]] = None,
+        note: str = "",
     ) -> tuple[Path, BackupManifest]:
         if not self._db_path.exists():
             raise FileNotFoundError(f"Database file does not exist: {self._db_path}")
@@ -104,6 +106,7 @@ class BackupService:
                     database_filename=snapshot_db.name,
                     database_sha256=db_sha256,
                     included_files=included,
+                    note=note.strip(),
                 )
                 zf.writestr(
                     "backup_manifest.json",
@@ -137,6 +140,13 @@ class BackupService:
                 raw_manifest = json.loads(zf.read("backup_manifest.json").decode("utf-8"))
                 manifest = BackupManifest(**raw_manifest)
 
+                if (
+                    Path(manifest.database_filename).name != manifest.database_filename
+                    or ".." in manifest.database_filename
+                ):
+                    raise ValueError(
+                        f"Unsafe database_filename in backup manifest: '{manifest.database_filename}'"
+                    )
                 if manifest.database_filename not in zf.namelist():
                     raise ValueError(
                         f"Backup archive missing database file '{manifest.database_filename}'"

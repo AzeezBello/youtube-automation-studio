@@ -120,7 +120,7 @@ class ResearchPage(QWidget):
         self.query_input.setToolTip("Enter a niche keyword, genre, or mood to search and cluster.")
         search_row.addWidget(self.query_input, stretch=1)
 
-        search_btn = QPushButton("Search & Cluster")
+        search_btn = QPushButton("Search && Cluster")
         search_btn.setObjectName("PrimaryButton")
         search_btn.setToolTip("Fetch public video metadata and automatically group results into topic clusters.")
         search_btn.clicked.connect(self._on_search)
