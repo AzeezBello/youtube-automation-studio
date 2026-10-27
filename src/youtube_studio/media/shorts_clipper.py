@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import re
+
 from youtube_studio.domain.models.project import ChapterEntry, TransitionConfig, TransitionType
 from youtube_studio.media.dj_intelligence import DJIntelligenceService
 from youtube_studio.media.mixer import AudioMixerService, MixTrackInput
@@ -50,6 +52,7 @@ class ShortsClipperService:
         output_dir: Path,
         *,
         title: str,
+        output_name: Optional[str] = None,
         subtitle: Optional[str] = None,
         palette: str = "warm_earth",
         source_duration_ms: Optional[int] = None,
@@ -60,6 +63,11 @@ class ShortsClipperService:
             raise FileNotFoundError(f"Source audio not found: {source_audio_path}")
 
         output_dir.mkdir(parents=True, exist_ok=True)
+        clean_out_name = (
+            re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", output_name.strip()).strip(" ._")
+            if output_name
+            else ""
+        )
         analysis = self._dj.analyze_track(
             source_audio_path,
             duration_ms=source_duration_ms,
@@ -70,7 +78,9 @@ class ShortsClipperService:
         eff_dur = max(1000, end_ms - start_ms)
 
         # 1. Trim peak audio segment with smooth 500ms fade-in/out
-        short_audio_path = output_dir / "short_highlight_audio.wav"
+        short_audio_path = output_dir / (
+            f"{clean_out_name}_short_audio.wav" if clean_out_name else "short_highlight_audio.wav"
+        )
         fade_ms = min(500, eff_dur // 4)
         mix_input = MixTrackInput(
             source_path=source_audio_path,
@@ -84,7 +94,9 @@ class ShortsClipperService:
         mix_res = self._mixer.mix([mix_input], short_audio_path)
 
         # 2. Render 9:16 vertical thumbnail & background (1080x1920)
-        short_thumb_path = output_dir / "short_highlight_9x16.png"
+        short_thumb_path = output_dir / (
+            f"{clean_out_name}_short_9x16.png" if clean_out_name else "short_highlight_9x16.png"
+        )
         thumb_spec = ThumbnailSpec(
             title=title,
             subtitle=subtitle,
@@ -97,7 +109,9 @@ class ShortsClipperService:
         self._thumbnails.render(thumb_spec, short_thumb_path)
 
         # 3. Render 9:16 vertical MP4 video with visualizer + motion FX + progress bar
-        short_video_path = output_dir / "short_highlight_9x16.mp4"
+        short_video_path = output_dir / (
+            f"{clean_out_name}_short_9x16.mp4" if clean_out_name else "short_highlight_9x16.mp4"
+        )
         render_spec = RenderSpec(
             audio_path=mix_res.output_path,
             image_path=short_thumb_path,

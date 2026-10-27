@@ -36,22 +36,37 @@ class FFmpegService:
     @staticmethod
     def _find_binary(name: str) -> Optional[Path]:
         found = shutil.which(name)
-        return Path(found) if found else None
+        if found:
+            return Path(found)
+        for prefix in ("/opt/homebrew/bin", "/usr/local/bin"):
+            candidate = Path(prefix) / name
+            if candidate.exists():
+                return candidate
+        if name == "ffmpeg":
+            try:
+                import imageio_ffmpeg
+
+                exe = imageio_ffmpeg.get_ffmpeg_exe()
+                if exe and Path(exe).exists():
+                    return Path(exe)
+            except Exception:
+                pass
+        return None
 
     @property
     def is_available(self) -> bool:
-        return self._ffmpeg is not None and self._ffprobe is not None
+        return self._ffmpeg is not None and self._ffmpeg.exists()
 
     def get_info(self) -> Optional[FFmpegInfo]:
-        if not self.is_available:
+        if not self.is_available or self._ffmpeg is None:
             return None
-        assert self._ffmpeg is not None and self._ffprobe is not None
+        probe_bin = self._ffprobe or self._ffmpeg
         ffmpeg_ver = self._run_version(self._ffmpeg)
-        ffprobe_ver = self._run_version(self._ffprobe)
+        ffprobe_ver = self._run_version(probe_bin)
         has_hw = self._detect_hwaccel()
         return FFmpegInfo(
             ffmpeg_path=self._ffmpeg,
-            ffprobe_path=self._ffprobe,
+            ffprobe_path=probe_bin,
             ffmpeg_version=ffmpeg_ver,
             ffprobe_version=ffprobe_ver,
             has_hwaccel=has_hw,
@@ -83,7 +98,26 @@ class FFmpegService:
             if duration is not None:
                 return int(float(duration) * 1000)
         except Exception:
-            return None
+            pass
+        if self._ffmpeg is not None and self._ffmpeg.exists():
+            try:
+                import re
+
+                res = subprocess.run(
+                    [str(self._ffmpeg), "-i", str(media_path)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=15,
+                )
+                m = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", res.stderr or "")
+                if m:
+                    hrs = int(m.group(1))
+                    mins = int(m.group(2))
+                    secs = float(m.group(3))
+                    return int((hrs * 3600 + mins * 60 + secs) * 1000)
+            except Exception:
+                pass
         return None
 
     def _run_version(self, binary: Path) -> str:

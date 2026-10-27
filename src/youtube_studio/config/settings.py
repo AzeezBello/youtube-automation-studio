@@ -41,7 +41,15 @@ def _resolve_output_dir_for_settings(
 
 
 def _persist_output_dir_for_settings(resolved_data_dir: Path, new_dir: Path | str) -> Path:
-    target = Path(new_dir).expanduser().resolve()
+    raw_path = Path(str(new_dir).strip()).expanduser()
+    if not raw_path.is_absolute() and raw_path.parts:
+        first_part = raw_path.parts[0]
+        if first_part.lower() in {"downloads", "desktop", "documents", "movies", "music"}:
+            home_candidate = Path.home() / first_part.capitalize()
+            if len(raw_path.parts) > 1:
+                home_candidate = home_candidate.joinpath(*raw_path.parts[1:])
+            raw_path = home_candidate
+    target = raw_path.resolve()
     target.mkdir(parents=True, exist_ok=True)
     prefs_path = resolved_data_dir / "studio_preferences.json"
     prefs_path.parent.mkdir(parents=True, exist_ok=True)

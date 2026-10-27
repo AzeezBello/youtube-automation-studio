@@ -5,11 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
@@ -19,6 +21,8 @@ from PySide6.QtWidgets import (
     QInputDialog,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
@@ -32,14 +36,23 @@ from PySide6.QtWidgets import (
 from youtube_studio.config import get_settings
 from youtube_studio.domain.models.media import MediaType
 from youtube_studio.domain.models.project import ProjectType, TransitionConfig, TransitionType
+from youtube_studio.domain.services.autopilot_service import (
+    ExpressAutopilotResult,
+    ExpressAutopilotService,
+)
 from youtube_studio.domain.services.channel_service import ChannelService
 from youtube_studio.domain.services.media_service import MediaLibraryService
 from youtube_studio.domain.services.project_service import ProjectService
-from youtube_studio.jobs.runner import ProductionJobRunner
+from youtube_studio.jobs.runner import ProductionJobRunner, sanitize_output_name
 from youtube_studio.media.renderer import VisualizerStyle
 from youtube_studio.media.shorts_clipper import ShortsClipperService
 from youtube_studio.storage import session_scope
 from youtube_studio.ui.components import EmptyStateWidget
+from youtube_studio.ui.timeline_editor import (
+    MultiTrackTimelineWidget,
+    TimelineCanvasEditorDialog,
+    TimelineClipItem,
+)
 
 
 class ProductionPage(QWidget):
@@ -96,23 +109,74 @@ class ProductionPage(QWidget):
 
         root.addLayout(selector_row)
 
+        # ⚡ 1-Click Express Auto-Pilot Bar (Eliminates manual multi-step setup!)
+        autopilot_box = QGroupBox(
+            "⚡ 1-Click Express Auto-Pilot — Folder / Library → Trim + Harmonic Mix + SEO + Thumbnail + 16:9 Video + 9:16 Short"
+        )
+        ap_layout = QHBoxLayout(autopilot_box)
+        ap_layout.setContentsMargins(12, 8, 12, 8)
+        ap_layout.setSpacing(8)
+
+        ap_layout.addWidget(QLabel("Source Tracks:"))
+        self.autopilot_source_combo = QComboBox()
+        self.autopilot_source_combo.setMinimumWidth(220)
+        self.autopilot_source_combo.setToolTip(
+            "Pick a Music Library folder or 'All Indexed Tracks' to automatically build a complete release."
+        )
+        ap_layout.addWidget(self.autopilot_source_combo)
+
+        self.autopilot_browse_btn = QPushButton("📂 Pick Disk Folder…")
+        self.autopilot_browse_btn.setToolTip(
+            "Select any folder of audio tracks on your computer and run 1-Click Auto-Pilot immediately."
+        )
+        self.autopilot_browse_btn.clicked.connect(self._on_autopilot_browse_folder)
+        ap_layout.addWidget(self.autopilot_browse_btn)
+
+        self.autopilot_title_input = QLineEdit()
+        self.autopilot_title_input.setPlaceholderText("Optional release title (auto-named if blank)…")
+        self.autopilot_title_input.setToolTip(
+            "Leave blank to automatically name the project from the folder or track title."
+        )
+        ap_layout.addWidget(self.autopilot_title_input, stretch=1)
+
+        self.autopilot_prepare_btn = QPushButton("⚡ 1-Click Auto-Setup (Tracks + Trim + Sort + SEO + Art)")
+        self.autopilot_prepare_btn.setObjectName("AccentButton")
+        self.autopilot_prepare_btn.setToolTip(
+            "Automatically creates the project, adds all tracks, trims silence, harmonically sorts by BPM/Key, "
+            "generates YouTube SEO chapters/tags, and creates the 16:9 thumbnail so you can review before rendering."
+        )
+        self.autopilot_prepare_btn.clicked.connect(lambda: self.run_express_autopilot(render_video=False))
+        ap_layout.addWidget(self.autopilot_prepare_btn)
+
+        self.autopilot_render_btn = QPushButton("🚀 1-Click Auto-Produce Full Video + Short")
+        self.autopilot_render_btn.setObjectName("PrimaryButton")
+        self.autopilot_render_btn.setToolTip(
+            "End-to-end automation in 1 click: scans/loads tracks, creates project, trims silence, "
+            "harmonically sorts, generates SEO metadata & 16:9 thumbnail, renders full 16:9 MP4 video, "
+            "and exports a 9:16 vertical Short into your Output Folder!"
+        )
+        self.autopilot_render_btn.clicked.connect(lambda: self.run_express_autopilot(render_video=True))
+        ap_layout.addWidget(self.autopilot_render_btn)
+
+        root.addWidget(autopilot_box)
+
         # Empty State Guide (displayed when no tracks are in the current timeline)
         self.empty_state = EmptyStateWidget(
-            title="No Tracks in Your Project Timeline Yet",
+            title="Ready to Build Your Release — Use 1-Click Auto-Pilot Above or Add Tracks",
             description=(
-                "Create or select a channel and project above, then add audio tracks from your Music Library "
-                "to build a single-track video or multi-track harmonic mix."
+                "Click '🚀 1-Click Auto-Produce Full Video + Short' above to automate everything in one click, "
+                "or click '+ Add Tracks / Folder' below to customize your timeline."
             ),
             tips=[
-                "<b>Smart Harmonic Sort:</b> Automatically orders tracks by Camelot Wheel compatibility (1A–12B) and gradual BPM progression.",
-                "<b>Auto-Cue Silence Trim:</b> Strips dead air at the start and end of every track for tight transitions.",
+                "<b>⚡ 1-Click Express Auto-Pilot:</b> Automatically creates the project, adds tracks, trims silence, orders by Camelot Key/BPM, generates SEO chapters & 16:9 artwork, and renders your video + Short.",
+                "<b>Multi-Track & Folder Import:</b> Add an entire folder or multiple tracks at once — no need to add tracks one by one.",
                 "<b>Bass-Swap EQ & Visualizers:</b> Eliminates low-end frequency clash during crossfades and renders multi-band spectrum visuals.",
             ],
-            action_label="+ Create Project",
-            action_tooltip="Create a new production project for the selected channel.",
-            on_action=self._on_new_project,
-            secondary_label="+ Add Track to Timeline",
-            secondary_tooltip="Pick an indexed audio track from your Music Library and add it to the timeline.",
+            action_label="🚀 1-Click Auto-Produce Full Release",
+            action_tooltip="Automatically build, harmonic-mix, generate SEO/artwork, and render the full video + Short.",
+            on_action=lambda: self.run_express_autopilot(render_video=True),
+            secondary_label="+ Add Tracks / Folder to Timeline",
+            secondary_tooltip="Pick multiple tracks or an entire folder from your Music Library and add them to the timeline.",
             on_secondary=self._on_add_track,
         )
         root.addWidget(self.empty_state)
@@ -122,11 +186,20 @@ class ProductionPage(QWidget):
 
         left_col = QVBoxLayout()
         track_btns_top = QHBoxLayout()
-        add_track_btn = QPushButton("Add Track…")
+        add_track_btn = QPushButton("+ Add Tracks / Folder…")
         add_track_btn.setObjectName("AccentButton")
-        add_track_btn.setToolTip("Add an indexed audio track from the Music Library into this project's timeline.")
+        add_track_btn.setToolTip(
+            "Select multiple audio tracks or an entire Music Library folder to add to the timeline at once."
+        )
         add_track_btn.clicked.connect(self._on_add_track)
         track_btns_top.addWidget(add_track_btn)
+
+        add_all_btn = QPushButton("⚡ Add All Library Tracks")
+        add_all_btn.setToolTip(
+            "Add all tracks from the selected source folder into the current project, auto-trim silence, and harmonic-sort."
+        )
+        add_all_btn.clicked.connect(self._on_quick_add_all_tracks)
+        track_btns_top.addWidget(add_all_btn)
 
         move_up_btn = QPushButton("↑ Up")
         move_up_btn.setToolTip("Move the selected track earlier in the timeline order.")
@@ -159,17 +232,46 @@ class ProductionPage(QWidget):
         harmonic_btn.clicked.connect(self._on_harmonic_sort)
         track_btns_bottom.addWidget(harmonic_btn)
 
+        self.open_timeline_editor_btn = QPushButton("🎬 Open Studio Timeline & Canvas Editor…")
+        self.open_timeline_editor_btn.setObjectName("PrimaryButton")
+        self.open_timeline_editor_btn.setToolTip(
+            "Open the visual nonlinear multi-track timeline & 16:9 / 9:16 video stage canvas editor "
+            "to scrub audio, drag clip trim handles, preview overlays/visualizers, and fine-tune transitions."
+        )
+        self.open_timeline_editor_btn.clicked.connect(self._on_open_timeline_editor)
+        track_btns_bottom.addWidget(self.open_timeline_editor_btn)
+
         left_col.addLayout(track_btns_bottom)
+
+        # Inline Interactive Multi-Track Visual Timeline Strip
+        self.mini_timeline = MultiTrackTimelineWidget(
+            self,
+            on_playhead_scrubbed=self._on_mini_timeline_playhead,
+            on_clip_selected=self._on_mini_timeline_clip_selected,
+            on_clip_trimmed=self._on_mini_timeline_clip_trimmed,
+        )
+        self.mini_timeline.setFixedHeight(195)
+        self.mini_timeline.setToolTip(
+            "Interactive Visual Timeline: click to scrub playhead, click any clip to select it, "
+            "or drag the yellow left/right handles on a selected clip to trim its in/out points."
+        )
+        left_col.addWidget(self.mini_timeline)
 
         self.tracks_table = QTableWidget(0, 7)
         self.tracks_table.setAlternatingRowColors(True)
+        self.tracks_table.verticalHeader().setVisible(False)
         self.tracks_table.setToolTip(
             "Project timeline tracks. Select any row to edit its trim, gain, fade, and transition settings on the right."
         )
         self.tracks_table.setHorizontalHeaderLabels(
             ["#", "Track", "BPM / Key", "Trim (ms)", "Gain (dB)", "Fade In/Out", "Transition"]
         )
-        self.tracks_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        hdr = self.tracks_table.horizontalHeader()
+        hdr.setMinimumSectionSize(34)
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        for col_idx in range(2, 7):
+            hdr.setSectionResizeMode(col_idx, QHeaderView.ResizeMode.ResizeToContents)
         self.tracks_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tracks_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.tracks_table.itemSelectionChanged.connect(self._on_track_selected)
@@ -241,9 +343,36 @@ class ProductionPage(QWidget):
 
         right_col.addWidget(editor_group)
 
-        # Video Styling & Visualizer FX Group
-        fx_group = QGroupBox("Video Styling, Overlays & Audio Visualizer FX")
+        # Video Styling, Custom Visual Assets & Visualizer FX Group
+        fx_group = QGroupBox("Video Background Asset (Image / Video Loop), Overlays & Visualizer FX")
         fx_layout = QFormLayout(fx_group)
+
+        vis_asset_row = QHBoxLayout()
+        self.visual_asset_combo = QComboBox()
+        self.visual_asset_combo.setSizeAdjustPolicy(
+            QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        self.visual_asset_combo.setMinimumContentsLength(18)
+        self.visual_asset_combo.setToolTip(
+            "Choose 'Auto-Generated Studio Artwork' or select a custom uploaded Image (.png/.jpg/.webp) "
+            "or looping Background Video (.mp4/.mov/.webm) for your release."
+        )
+        vis_asset_row.addWidget(self.visual_asset_combo, stretch=1)
+
+        self.btn_add_image_asset = QPushButton("🖼 + Image…")
+        self.btn_add_image_asset.setToolTip(
+            "Upload a custom image (.png, .jpg, .jpeg, .webp) to use as the video background & thumbnail."
+        )
+        self.btn_add_image_asset.clicked.connect(self._on_upload_image_asset_dialog)
+        vis_asset_row.addWidget(self.btn_add_image_asset)
+
+        self.btn_add_video_asset = QPushButton("🎬 + Video…")
+        self.btn_add_video_asset.setToolTip(
+            "Upload a custom video clip or loop (.mp4, .mov, .webm, .mkv) to loop as the video background."
+        )
+        self.btn_add_video_asset.clicked.connect(self._on_upload_video_asset_dialog)
+        vis_asset_row.addWidget(self.btn_add_video_asset)
+        fx_layout.addRow("Visual Asset:", vis_asset_row)
 
         self.visualizer_combo = QComboBox()
         self.visualizer_combo.addItems([v.value for v in VisualizerStyle])
@@ -284,6 +413,22 @@ class ProductionPage(QWidget):
             "Auto-computed YouTube chapter timestamps (starting at 00:00) accounting for trims and crossfade overlaps."
         )
         chapters_layout.addWidget(self.chapters_preview)
+
+        name_row = QHBoxLayout()
+        lbl_name = QLabel("Output Name:")
+        lbl_name.setStyleSheet("font-weight: 600;")
+        name_row.addWidget(lbl_name)
+
+        self.output_name_input = QLineEdit()
+        self.output_name_input.setPlaceholderText(
+            "Custom output folder & video filename (e.g. Echoes_of_Livity_Mix_Vol_1)…"
+        )
+        self.output_name_input.setToolTip(
+            "Name for the rendered output subfolder and exported files (<Output Name>.mp4, <Output Name>_audio.wav, "
+            "<Output Name>_thumbnail.png, <Output Name>_short_9x16.mp4). Defaults to the project name if left blank."
+        )
+        name_row.addWidget(self.output_name_input, stretch=1)
+        chapters_layout.addLayout(name_row)
 
         out_row = QHBoxLayout()
         lbl_out = QLabel("Output Folder:")
@@ -332,9 +477,175 @@ class ProductionPage(QWidget):
 
         root.addLayout(body, stretch=1)
 
+    @staticmethod
+    def _visual_assets_dir() -> Path:
+        d = get_settings().resolved_data_dir() / "visual_assets"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def list_visual_assets(self) -> list[Path]:
+        """Return all uploaded custom images and video loops stored in visual_assets/."""
+        allowed = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp", ".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"}
+        d = self._visual_assets_dir()
+        return [
+            p
+            for p in sorted(d.iterdir())
+            if p.is_file() and p.suffix.lower() in allowed and not p.name.startswith(".")
+        ]
+
+    def upload_visual_asset(self, file_path: str | Path) -> Path:
+        """Copy a custom image or video asset into the Studio Visual Assets library and select it."""
+        import shutil
+
+        src = Path(file_path).expanduser().resolve()
+        if not src.exists() or not src.is_file():
+            raise FileNotFoundError(f"Asset file not found: {src}")
+        dest_dir = self._visual_assets_dir()
+        dest = dest_dir / src.name
+        if dest.resolve() != src.resolve():
+            shutil.copy2(src, dest)
+        proj_id = self.current_project_id()
+        if proj_id:
+            from youtube_studio.domain.models.project import AssetType
+
+            with session_scope() as session:
+                ProjectService(session).register_asset(
+                    proj_id,
+                    AssetType.BACKGROUND_IMAGE,
+                    str(dest),
+                    source_type="custom_upload",
+                    approved=True,
+                )
+        self._rebuild_visual_assets_combo()
+        idx = self.visual_asset_combo.findData(str(dest))
+        if idx >= 0:
+            self.visual_asset_combo.setCurrentIndex(idx)
+        return dest
+
+    def selected_visual_asset_path(self) -> Optional[Path]:
+        if not hasattr(self, "visual_asset_combo"):
+            return None
+        raw = str(self.visual_asset_combo.currentData() or "").strip()
+        if raw and Path(raw).exists():
+            return Path(raw)
+        return None
+
+    def _rebuild_visual_assets_combo(self) -> None:
+        if not hasattr(self, "visual_asset_combo"):
+            return
+        prev = self.visual_asset_combo.currentData()
+        self.visual_asset_combo.blockSignals(True)
+        self.visual_asset_combo.clear()
+        self.visual_asset_combo.addItem("✨ Auto-Generated 16:9 Studio Artwork (Default)", "")
+        video_exts = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"}
+        for p in self.list_visual_assets():
+            icon = "🎬 Video Loop:" if p.suffix.lower() in video_exts else "🖼 Image:"
+            self.visual_asset_combo.addItem(f"{icon} {p.name}", str(p))
+        if prev is not None:
+            idx = self.visual_asset_combo.findData(prev)
+            if idx >= 0:
+                self.visual_asset_combo.setCurrentIndex(idx)
+        self.visual_asset_combo.blockSignals(False)
+
+    def _on_upload_image_asset_dialog(self) -> None:
+        chosen, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Custom Image for Video Background & Thumbnail",
+            str(Path.home()),
+            "Image Files (*.png *.jpg *.jpeg *.webp *.bmp *.gif)",
+        )
+        if not chosen:
+            return
+        try:
+            saved = self.upload_visual_asset(chosen)
+            QMessageBox.information(
+                self,
+                "Image Asset Added",
+                f"Added image asset:\n{saved.name}\n\n"
+                "It is now selected as the Visual Asset for your video & 1-Click Auto-Pilot.",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Image Upload Failed", str(exc))
+
+    def _on_upload_video_asset_dialog(self) -> None:
+        chosen, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Custom Video Clip / Loop for Video Background",
+            str(Path.home()),
+            "Video Files (*.mp4 *.mov *.webm *.mkv *.m4v *.avi)",
+        )
+        if not chosen:
+            return
+        try:
+            saved = self.upload_visual_asset(chosen)
+            QMessageBox.information(
+                self,
+                "Video Asset Added",
+                f"Added background video loop:\n{saved.name}\n\n"
+                "It will seamlessly loop as the visual background for your rendered video!",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Video Upload Failed", str(exc))
+
+    def _rebuild_autopilot_sources(self) -> None:
+        if not hasattr(self, "autopilot_source_combo"):
+            return
+        prev_data = self.autopilot_source_combo.currentData()
+        self.autopilot_source_combo.blockSignals(True)
+        self.autopilot_source_combo.clear()
+
+        try:
+            with session_scope() as session:
+                all_audio = MediaLibraryService(session).list_media(media_type=MediaType.AUDIO)
+        except Exception:
+            all_audio = []
+
+        self.autopilot_source_combo.addItem(
+            f"All Indexed Library Tracks ({len(all_audio)} tracks)",
+            "",
+        )
+
+        seen_folders: set[str] = set()
+        lib_root = get_settings().resolved_data_dir() / "music_library"
+        if lib_root.exists():
+            for p in sorted(lib_root.iterdir()):
+                if p.is_dir() and not p.name.startswith("."):
+                    seen_folders.add(p.name)
+                    count = sum(
+                        1
+                        for it in all_audio
+                        if str(it.metadata.get("folder") or Path(it.path).parent.name) == p.name
+                    )
+                    self.autopilot_source_combo.addItem(
+                        f"📁 {p.name} ({count} tracks)",
+                        f"folder:{p.name}",
+                    )
+
+        for it in all_audio:
+            lbl = str(it.metadata.get("folder") or Path(it.path).parent.name).strip()
+            if lbl and lbl not in seen_folders:
+                seen_folders.add(lbl)
+                count = sum(
+                    1
+                    for m in all_audio
+                    if str(m.metadata.get("folder") or Path(m.path).parent.name).strip() == lbl
+                )
+                self.autopilot_source_combo.addItem(
+                    f"📂 {lbl} ({count} tracks)",
+                    f"folder:{lbl}",
+                )
+
+        if prev_data is not None:
+            idx = self.autopilot_source_combo.findData(prev_data)
+            if idx >= 0:
+                self.autopilot_source_combo.setCurrentIndex(idx)
+        self.autopilot_source_combo.blockSignals(False)
+
     def refresh(self) -> None:
         if hasattr(self, "output_dir_input"):
             self.output_dir_input.setText(str(get_settings().resolved_output_dir()))
+        self._rebuild_autopilot_sources()
+        self._rebuild_visual_assets_combo()
         try:
             with session_scope() as session:
                 channels = ChannelService(session).list_active()
@@ -352,6 +663,152 @@ class ProductionPage(QWidget):
             self.channel_combo.setCurrentIndex(self._channel_ids.index(prev_channel))
         self.channel_combo.blockSignals(False)
         self._reload_projects()
+
+    def _on_autopilot_browse_folder(self) -> None:
+        chosen = QFileDialog.getExistingDirectory(
+            self,
+            "Select Music Folder for 1-Click Auto-Pilot",
+            str(Path.home()),
+        )
+        if not chosen:
+            return
+        self.run_express_autopilot(source_folder=chosen, render_video=True)
+
+    def run_express_autopilot(
+        self,
+        *,
+        source_folder: Optional[str | Path] = None,
+        library_folder_name: Optional[str] = None,
+        media_file_ids: Optional[list[str]] = None,
+        render_video: bool = True,
+    ) -> Optional[ExpressAutopilotResult]:
+        """Run 1-Click Express Auto-Pilot and select the resulting channel & project in the UI."""
+        if not source_folder and not library_folder_name and not media_file_ids:
+            raw_data = str(self.autopilot_source_combo.currentData() or "")
+            if raw_data.startswith("folder:"):
+                library_folder_name = raw_data[len("folder:") :]
+
+        title_override = (
+            self.autopilot_title_input.text().strip()
+            if hasattr(self, "autopilot_title_input")
+            else ""
+        )
+        custom_out_name = (
+            self.output_name_input.text().strip()
+            if hasattr(self, "output_name_input")
+            else ""
+        )
+        base_out = self._resolve_and_save_output_base()
+        vis_style = self.visualizer_combo.currentText()
+        custom_vis = self.selected_visual_asset_path()
+
+        try:
+            with session_scope() as session:
+                ap = ExpressAutopilotService(session)
+                res = ap.run_autopilot(
+                    channel_id=self.current_channel_id(),
+                    project_name=title_override or custom_out_name or None,
+                    media_file_ids=media_file_ids,
+                    source_folder=source_folder,
+                    library_folder_name=library_folder_name,
+                    visualizer_style=vis_style,
+                    custom_visual_path=custom_vis,
+                    output_name=custom_out_name or title_override or None,
+                    render_video=render_video,
+                    export_short=render_video,
+                    output_base_dir=base_out,
+                )
+        except Exception as exc:
+            QMessageBox.critical(self, "1-Click Auto-Pilot", str(exc))
+            return None
+
+        self.refresh()
+        if res.channel_id in self._channel_ids:
+            self.channel_combo.setCurrentIndex(self._channel_ids.index(res.channel_id))
+            self._reload_projects()
+        if res.project_id in self._project_ids:
+            self.project_combo.setCurrentIndex(self._project_ids.index(res.project_id))
+            self._reload_tracks()
+
+        self._notify_output_dir_changed()
+
+        steps_summary = "\n".join(f"  ✓ {s}" for s in res.executed_steps)
+        if render_video:
+            QMessageBox.information(
+                self,
+                "🚀 1-Click Auto-Pilot Complete!",
+                f"Finished building and rendering '{res.project_name}' ({res.track_count} tracks)!\n\n"
+                f"Automated Steps Completed:\n{steps_summary}\n\n"
+                f"YouTube SEO Title:\n  {res.seo_title}\n\n"
+                f"Output Folder:\n  {res.output_dir}\n"
+                f"9:16 Vertical Short:\n  {res.short_video_path or 'Included in output folder'}",
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "⚡ 1-Click Auto-Setup Complete!",
+                f"Prepared '{res.project_name}' ({res.track_count} tracks) in 1 click!\n\n"
+                f"Automated Steps Completed:\n{steps_summary}\n\n"
+                f"You can now review the timeline on the left or click 'Run Full Production Pipeline' to render.",
+            )
+        return res
+
+    def _ensure_channel_and_project(self, default_name: str = "Studio Mix Session") -> tuple[str, str]:
+        """Ensure an active channel and project exist, creating them automatically so the user is never blocked."""
+        channel_id = self.current_channel_id()
+        project_id = self.current_project_id()
+        created_any = False
+        with session_scope() as session:
+            ap = ExpressAutopilotService(session)
+            if not channel_id:
+                channel_id, _, _ = ap.ensure_active_channel()
+                created_any = True
+            if not project_id:
+                proj = ProjectService(session).create_project(
+                    channel_id,
+                    default_name,
+                    project_type=ProjectType.MIX,
+                )
+                project_id = proj.id
+                created_any = True
+        if created_any:
+            self.refresh()
+            if channel_id in self._channel_ids:
+                self.channel_combo.setCurrentIndex(self._channel_ids.index(channel_id))
+                self._reload_projects()
+            if project_id in self._project_ids:
+                self.project_combo.setCurrentIndex(self._project_ids.index(project_id))
+        return channel_id, project_id
+
+    def _on_quick_add_all_tracks(self) -> None:
+        raw_data = str(self.autopilot_source_combo.currentData() or "")
+        folder_filter = raw_data[len("folder:") :] if raw_data.startswith("folder:") else None
+        with session_scope() as session:
+            ap = ExpressAutopilotService(session)
+            tracks = ap.resolve_tracks(library_folder_name=folder_filter)
+        if not tracks:
+            QMessageBox.information(
+                self,
+                "No Audio Tracks Found",
+                "Upload or scan audio tracks in the Music Library first.",
+            )
+            return
+        default_proj_name = f"{folder_filter} — Mix Session" if folder_filter else "Studio Mix Session"
+        _, project_id = self._ensure_channel_and_project(default_proj_name)
+        with session_scope() as session:
+            proj_svc = ProjectService(session)
+            existing_ids = {pt.media_file_id for pt in proj_svc.list_tracks(project_id)}
+            t_cfg = TransitionConfig(
+                transition_type=TransitionType.BASS_SWAP_EQ if len(tracks) > 1 else TransitionType.NONE,
+                overlap_ms=3000 if len(tracks) > 1 else 0,
+            )
+            for mf in tracks:
+                if mf.id not in existing_ids:
+                    proj_svc.add_track(project_id, mf.id, transition_config=t_cfg)
+            proj_svc.auto_cue_trim_tracks(project_id)
+            if len(proj_svc.list_tracks(project_id)) > 1:
+                proj_svc.auto_harmonic_sort(project_id)
+        self._reload_tracks()
 
     def current_channel_id(self) -> Optional[str]:
         idx = self.channel_combo.currentIndex()
@@ -386,6 +843,12 @@ class ProductionPage(QWidget):
         self._reload_tracks()
 
     def _on_project_changed(self, _index: int) -> None:
+        project_id = self.current_project_id()
+        if project_id and hasattr(self, "output_name_input"):
+            with session_scope() as session:
+                proj = ProjectService(session).get_project(project_id)
+            if proj is not None:
+                self.output_name_input.setText(proj.name)
         self._reload_tracks()
 
     def _reload_tracks(self) -> None:
@@ -393,14 +856,24 @@ class ProductionPage(QWidget):
         self.tracks_table.setRowCount(0)
         self._track_ids = []
         self.chapters_preview.setPlainText("")
+        if hasattr(self, "mini_timeline"):
+            self.mini_timeline.set_timeline_data([])
         if not project_id:
             if hasattr(self, "empty_state"):
                 self.empty_state.setVisible(True)
             return
 
+        clip_items: list[TimelineClipItem] = []
         with session_scope() as session:
             proj_svc = ProjectService(session)
             media_svc = MediaLibraryService(session)
+            proj = proj_svc.get_project(project_id)
+            if (
+                proj is not None
+                and hasattr(self, "output_name_input")
+                and not self.output_name_input.text().strip()
+            ):
+                self.output_name_input.setText(proj.name)
             tracks = proj_svc.list_tracks(project_id)
             chapters = proj_svc.compute_chapters(project_id)
             total_ms = proj_svc.compute_total_duration_ms(project_id)
@@ -417,6 +890,8 @@ class ProductionPage(QWidget):
                     if media
                     else pt.media_file_id
                 )
+                artist = str(media.metadata.get("artist") or "") if media else ""
+                dur_ms = int(media.duration_ms or 60_000) if media else 60_000
                 bpm = media.metadata.get("bpm") if media else None
                 camelot = media.metadata.get("camelot_code") if media else None
                 bpm_key_str = f"{bpm} · {camelot}" if bpm and camelot else "—"
@@ -436,10 +911,71 @@ class ProductionPage(QWidget):
                 self.tracks_table.setItem(idx, 5, QTableWidgetItem(fade_str))
                 self.tracks_table.setItem(idx, 6, QTableWidgetItem(trans_str))
 
+                seed_str = f"{title}:{pt.media_file_id}"
+                peaks: list[float] = []
+                for b in range(40):
+                    h = sum((ord(ch) * (b + 3 + j)) for j, ch in enumerate(seed_str))
+                    peaks.append(0.22 + 0.72 * ((h % 100) / 100.0))
+                clip_items.append(
+                    TimelineClipItem(
+                        track_id=pt.id,
+                        media_file_id=pt.media_file_id,
+                        title=title,
+                        artist=artist,
+                        file_path=str(media.path) if media else "",
+                        source_duration_ms=max(1000, dur_ms),
+                        trim_start_ms=int(pt.trim_start_ms or 0),
+                        trim_end_ms=int(pt.trim_end_ms) if pt.trim_end_ms else None,
+                        gain_db=float(pt.gain_db or 0.0),
+                        fade_in_ms=int(pt.fade_in_ms or 0),
+                        fade_out_ms=int(pt.fade_out_ms or 0),
+                        overlap_ms=int(tc.overlap_ms or 0),
+                        transition_type=tc.transition_type.value,
+                        bpm=float(bpm) if bpm is not None else None,
+                        camelot_code=str(camelot) if camelot else None,
+                        peaks=peaks,
+                    )
+                )
+
+        if hasattr(self, "mini_timeline"):
+            vis_path = self.selected_visual_asset_path()
+            vis_lbl = vis_path.name if vis_path else "Studio Artwork / Video Loop"
+            self.mini_timeline.set_timeline_data(clip_items, visual_label=vis_lbl)
+
         lines = [f"Estimated Total Duration: {total_ms / 1000.0:.1f}s", "", "Chapters:"]
         for ch in chapters:
             lines.append(f"{ch.format_timestamp()} {ch.title}")
         self.chapters_preview.setPlainText("\n".join(lines))
+
+    def _on_mini_timeline_playhead(self, _playhead_ms: int) -> None:
+        pass
+
+    def _on_mini_timeline_clip_selected(self, idx: int) -> None:
+        if 0 <= idx < self.tracks_table.rowCount():
+            self.tracks_table.selectRow(idx)
+
+    def _on_mini_timeline_clip_trimmed(
+        self, idx: int, trim_start_ms: int, trim_end_ms: Optional[int]
+    ) -> None:
+        if 0 <= idx < len(self._track_ids):
+            self.tracks_table.selectRow(idx)
+            self.trim_start_spin.setValue(trim_start_ms)
+            self.trim_end_spin.setValue(int(trim_end_ms or 0))
+            self._on_save_track_params()
+
+    def _on_open_timeline_editor(self) -> None:
+        _, project_id = self._ensure_channel_and_project("Studio Mix Session")
+        if not project_id:
+            return
+        dlg = TimelineCanvasEditorDialog(
+            self,
+            project_id=project_id,
+            visual_asset_path=self.selected_visual_asset_path(),
+            visualizer_style=self.visualizer_combo.currentText(),
+            on_saved=self._reload_tracks,
+        )
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            self._reload_tracks()
 
     def _on_new_channel(self) -> None:
         name, ok = QInputDialog.getText(self, "New Channel", "Channel name:")
@@ -452,50 +988,155 @@ class ProductionPage(QWidget):
     def _on_new_project(self) -> None:
         channel_id = self.current_channel_id()
         if not channel_id:
-            QMessageBox.warning(self, "New Project", "Please create or select a channel first.")
-            return
-        name, ok = QInputDialog.getText(self, "New Project", "Project name:")
-        if not ok or not name.strip():
-            return
-        types = [t.value for t in ProjectType]
-        chosen, ok_type = QInputDialog.getItem(
-            self, "Project Type", "Select project type:", types, 0, False
+            with session_scope() as session:
+                channel_id, _, _ = ExpressAutopilotService(session).ensure_active_channel()
+            self.refresh()
+            if channel_id in self._channel_ids:
+                self.channel_combo.setCurrentIndex(self._channel_ids.index(channel_id))
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Create Production Project")
+        dlg.setMinimumWidth(420)
+        form = QFormLayout(dlg)
+
+        name_edit = QLineEdit("New Mix Session")
+        name_edit.selectAll()
+        type_combo = QComboBox()
+        for t in ProjectType:
+            type_combo.addItem(t.value.replace("_", " ").title(), t.value)
+        type_combo.setCurrentIndex(1 if len(ProjectType) > 1 else 0)
+
+        form.addRow("Project Name:", name_edit)
+        form.addRow("Project Format:", type_combo)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         )
-        if not ok_type:
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        form.addRow(buttons)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
+        proj_name = name_edit.text().strip() or "New Mix Session"
+        chosen_type = str(type_combo.currentData() or ProjectType.MIX.value)
         with session_scope() as session:
-            ProjectService(session).create_project(
+            created = ProjectService(session).create_project(
                 channel_id,
-                name.strip(),
-                project_type=ProjectType(chosen),
+                proj_name,
+                project_type=ProjectType(chosen_type),
             )
         self._reload_projects()
+        if created.id in self._project_ids:
+            self.project_combo.setCurrentIndex(self._project_ids.index(created.id))
 
     def _on_add_track(self) -> None:
-        project_id = self.current_project_id()
-        if not project_id:
-            QMessageBox.warning(self, "Add Track", "Please create or select a project first.")
-            return
+        _, project_id = self._ensure_channel_and_project("Studio Mix Session")
         with session_scope() as session:
             media_items = MediaLibraryService(session).list_media(media_type=MediaType.AUDIO)
         if not media_items:
             QMessageBox.information(
                 self,
                 "Add Track",
-                "No audio tracks found in the Music Library. Scan a folder in Music Library first.",
+                "No audio tracks found in the Music Library. Upload audio files or scan a folder in Music Library first.",
             )
             return
-        labels = [
-            f"{m.metadata.get('title') or Path(m.path).name} ({m.path})" for m in media_items
-        ]
-        chosen, ok = QInputDialog.getItem(
-            self, "Add Track to Timeline", "Select audio track:", labels, 0, False
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Add Audio Tracks / Folder to Timeline")
+        dlg.setMinimumSize(640, 440)
+        vlayout = QVBoxLayout(dlg)
+
+        top_bar = QHBoxLayout()
+        top_bar.addWidget(QLabel("Filter by Folder:"))
+        folder_combo = QComboBox()
+        folder_combo.addItem("All Folders & Collections", "")
+        seen_folders: set[str] = set()
+        for m in media_items:
+            f_lbl = str(m.metadata.get("folder") or Path(m.path).parent.name).strip()
+            if f_lbl and f_lbl not in seen_folders:
+                seen_folders.add(f_lbl)
+                folder_combo.addItem(f"📁 {f_lbl}", f_lbl)
+        top_bar.addWidget(folder_combo, stretch=1)
+
+        btn_select_all = QPushButton("Select All Shown")
+        btn_clear_all = QPushButton("Clear")
+        top_bar.addWidget(btn_select_all)
+        top_bar.addWidget(btn_clear_all)
+        vlayout.addLayout(top_bar)
+
+        track_list = QListWidget()
+        track_list.setSelectionMode(QListWidget.SelectionMode.MultiSelection)
+        vlayout.addWidget(track_list, stretch=1)
+
+        def _populate_list() -> None:
+            active_folder = str(folder_combo.currentData() or "")
+            track_list.clear()
+            for m in media_items:
+                f_lbl = str(m.metadata.get("folder") or Path(m.path).parent.name).strip()
+                if active_folder and f_lbl != active_folder:
+                    continue
+                title = str(m.metadata.get("title") or Path(m.path).stem)
+                bpm = m.metadata.get("bpm")
+                camelot = m.metadata.get("camelot_code")
+                harmonic = f" · {bpm} BPM · {camelot}" if bpm and camelot else ""
+                item = QListWidgetItem(f"{title}  [{f_lbl}{harmonic}]")
+                item.setData(Qt.ItemDataRole.UserRole, m.id)
+                item.setCheckState(Qt.CheckState.Checked)
+                track_list.addItem(item)
+
+        folder_combo.currentIndexChanged.connect(lambda _: _populate_list())
+        btn_select_all.clicked.connect(
+            lambda: [
+                track_list.item(i).setCheckState(Qt.CheckState.Checked)
+                for i in range(track_list.count())
+            ]
         )
-        if not ok:
+        btn_clear_all.clicked.connect(
+            lambda: [
+                track_list.item(i).setCheckState(Qt.CheckState.Unchecked)
+                for i in range(track_list.count())
+            ]
+        )
+        _populate_list()
+
+        chk_auto_smart = QCheckBox(
+            "Automatically apply Silence Trim & Smart Harmonic Sort (BPM + Camelot Key) after adding"
+        )
+        chk_auto_smart.setChecked(True)
+        vlayout.addWidget(chk_auto_smart)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        vlayout.addWidget(buttons)
+
+        if dlg.exec() != QDialog.DialogCode.Accepted:
             return
-        selected_media = media_items[labels.index(chosen)]
+
+        chosen_ids: list[str] = []
+        for i in range(track_list.count()):
+            it = track_list.item(i)
+            if it.checkState() == Qt.CheckState.Checked or it.isSelected():
+                chosen_ids.append(str(it.data(Qt.ItemDataRole.UserRole)))
+
+        if not chosen_ids:
+            return
+
         with session_scope() as session:
-            ProjectService(session).add_track(project_id, selected_media.id)
+            proj_svc = ProjectService(session)
+            t_cfg = TransitionConfig(
+                transition_type=TransitionType.BASS_SWAP_EQ if len(chosen_ids) > 1 else TransitionType.NONE,
+                overlap_ms=3000 if len(chosen_ids) > 1 else 0,
+            )
+            for mid in chosen_ids:
+                proj_svc.add_track(project_id, mid, transition_config=t_cfg)
+            if chk_auto_smart.isChecked():
+                proj_svc.auto_cue_trim_tracks(project_id)
+                if len(proj_svc.list_tracks(project_id)) > 1:
+                    proj_svc.auto_harmonic_sort(project_id)
         self._reload_tracks()
 
     def _on_move_track(self, delta: int) -> None:
@@ -644,14 +1285,26 @@ class ProductionPage(QWidget):
                     except Exception:
                         pass
 
+    def _resolve_clean_output_name(self, project_id: str) -> str:
+        """Resolve a filesystem-safe output folder and file stem from Output Name input or project title."""
+        raw = self.output_name_input.text().strip() if hasattr(self, "output_name_input") else ""
+        if not raw:
+            with session_scope() as session:
+                proj = ProjectService(session).get_project(project_id)
+            if proj is not None and proj.name.strip():
+                raw = proj.name.strip()
+        return sanitize_output_name(raw) if raw else project_id
+
     def _on_run_production(self) -> None:
         project_id = self.current_project_id()
         if not project_id:
             QMessageBox.warning(self, "Production", "Please select a project first.")
             return
         base_out = self._resolve_and_save_output_base()
-        project_out_dir = base_out / project_id
+        clean_out_name = self._resolve_clean_output_name(project_id)
+        project_out_dir = base_out / clean_out_name
         vis_style = self.visualizer_combo.currentText()
+        custom_vis = self.selected_visual_asset_path()
         fx_payload = {
             "now_playing_overlay": self.chk_now_playing.isChecked(),
             "progress_bar": self.chk_progress.isChecked(),
@@ -667,14 +1320,17 @@ class ProductionPage(QWidget):
                     output_dir=project_out_dir,
                     visualizer_style=vis_style,
                     visual_fx=fx_payload,
+                    custom_visual_path=custom_vis,
+                    output_name=clean_out_name,
                 )
                 summary = runner.run_job(job.id)
             self._reload_projects()
             QMessageBox.information(
                 self,
                 "Production Complete",
-                f"Project packaged successfully!\n\n"
+                f"Project packaged successfully as '{clean_out_name}'!\n\n"
                 f"Output directory: {summary.output_dir}\n"
+                f"Video file: {Path(summary.output_dir) / f'{clean_out_name}.mp4'}\n"
                 f"Manifest: {summary.manifest_path}\n"
                 f"Executed stages: {', '.join(summary.executed_stages)}",
             )
@@ -687,6 +1343,7 @@ class ProductionPage(QWidget):
             QMessageBox.warning(self, "Short Clipper", "Please select a project first.")
             return
         base_out = self._resolve_and_save_output_base()
+        clean_out_name = self._resolve_clean_output_name(project_id)
         try:
             with session_scope() as session:
                 proj_svc = ProjectService(session)
@@ -702,12 +1359,13 @@ class ProductionPage(QWidget):
                 if not first_media:
                     return
                 source_path = Path(first_media.path)
-                out_dir = base_out / project_id / "shorts"
+                out_dir = base_out / clean_out_name / "shorts"
                 clipper = ShortsClipperService()
                 short_res = clipper.create_highlight_short(
                     source_path,
                     out_dir,
                     title=proj.name,
+                    output_name=clean_out_name,
                     source_duration_ms=first_media.duration_ms,
                 )
             QMessageBox.information(

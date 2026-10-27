@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -47,6 +48,12 @@ class ProductionRunSummary:
     manifest_path: Optional[Path] = None
 
 
+def sanitize_output_name(raw_name: str) -> str:
+    """Sanitize a user-provided production output name for safe folder and file naming."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]+', "_", raw_name.strip()).strip(". ")
+    return cleaned or "Studio_Release"
+
+
 class ProductionJobRunner:
     """Executes and resumes multi-stage music-to-video production jobs."""
 
@@ -74,20 +81,26 @@ class ProductionJobRunner:
         project_id: str,
         *,
         output_dir: Optional[Path] = None,
+        output_name: Optional[str] = None,
         enable_waveform_overlay: bool = False,
         visualizer_style: str = "none",
         visual_fx: Optional[dict[str, bool]] = None,
+        custom_visual_path: Optional[str | Path] = None,
+        custom_thumbnail_path: Optional[str | Path] = None,
     ) -> Job:
         project = self._projects.get_project(project_id)
         if project is None:
             raise ValueError(f"Project {project_id} not found")
 
+        clean_out_name = sanitize_output_name(output_name) if (output_name and output_name.strip()) else ""
         settings = get_settings()
-        resolved_out = (
-            output_dir.expanduser().resolve()
-            if output_dir is not None
-            else (settings.resolved_output_dir() / project_id)
-        )
+        if output_dir is not None:
+            resolved_out = output_dir.expanduser().resolve()
+        elif clean_out_name:
+            resolved_out = (settings.resolved_output_dir() / clean_out_name).resolve()
+        else:
+            resolved_out = (settings.resolved_output_dir() / project_id).resolve()
+
         return self._jobs.enqueue(
             JobType.PACKAGE,
             channel_id=project.channel_id,
@@ -95,9 +108,16 @@ class ProductionJobRunner:
             stage="validate_inputs",
             input_data={
                 "output_dir": str(resolved_out),
+                "output_name": clean_out_name,
                 "enable_waveform_overlay": enable_waveform_overlay,
                 "visualizer_style": visualizer_style,
                 "visual_fx": visual_fx or {},
+                "custom_visual_path": str(Path(custom_visual_path).expanduser().resolve())
+                if custom_visual_path
+                else "",
+                "custom_thumbnail_path": str(Path(custom_thumbnail_path).expanduser().resolve())
+                if custom_thumbnail_path
+                else "",
             },
         )
 
@@ -122,11 +142,12 @@ class ProductionJobRunner:
         brand = channel.brand_config if channel else ChannelBrandConfig()
 
         settings = get_settings()
+        clean_out_name = sanitize_output_name(str(job.input_data.get("output_name", ""))) if str(job.input_data.get("output_name", "")).strip() else ""
         out_dir_str = job.input_data.get("output_dir")
         out_dir = (
             Path(out_dir_str).expanduser().resolve()
             if out_dir_str
-            else (settings.resolved_output_dir() / project.id)
+            else (settings.resolved_output_dir() / (clean_out_name or project.id))
         )
         out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -160,7 +181,8 @@ class ProductionJobRunner:
 
                 elif stage_name == "mix_audio":
                     mix_inputs = self._stage_validate_inputs(project.id)
-                    mixed_path = out_dir / "mixed_audio.wav"
+                    audio_filename = f"{clean_out_name}_audio.wav" if clean_out_name else "mixed_audio.wav"
+                    mixed_path = out_dir / audio_filename
                     mix_res = self._mixer.mix(mix_inputs, mixed_path)
                     artifacts["mixed_audio"] = str(mix_res.output_path)
                     artifacts["mixed_duration_ms"] = str(mix_res.duration_ms)
@@ -177,50 +199,90 @@ class ProductionJobRunner:
                     motif = str(brand.thumbnail_style.get("motif", "vinyl_and_sound_system"))
                     res_w, res_h = self._parse_resolution(brand.default_resolution)
 
-                    thumb_path = out_dir / "thumbnail.png"
-                    thumb_spec = ThumbnailSpec(
-                        title=project.name,
-                        subtitle=channel.name if channel else "YouTube Automation Studio",
-                        badge_text=project.project_type.value.replace("_", " ").upper(),
-                        palette=palette,
-                        aspect_ratio=brand.default_aspect_ratio,
-                        motif=motif,
-                    )
-                    thumb_res = self._thumbnails.render(thumb_spec, thumb_path)
-                    artifacts["thumbnail"] = str(thumb_res.output_path)
-                    self._projects.register_asset(
-                        project.id,
-                        AssetType.THUMBNAIL,
-                        str(thumb_res.output_path),
-                        checksum=thumb_res.checksum,
-                        provenance={"palette": thumb_res.palette},
-                        approved=True,
-                    )
+                    # Check for user-supplied custom visual or thumbnail assets
+                    custom_vis_raw = str(job.input_data.get("custom_visual_path", "")).strip()
+                    custom_thumb_raw = str(job.input_data.get("custom_thumbnail_path", "")).strip()
+                    if not custom_vis_raw or not custom_thumb_raw:
+                        for existing_asset in self._projects.list_assets(project.id):
+                            if existing_asset.source_type == "custom_upload" and Path(existing_asset.path).exists():
+                                if existing_asset.asset_type == AssetType.BACKGROUND_IMAGE and not custom_vis_raw:
+                                    custom_vis_raw = existing_asset.path
+                                elif existing_asset.asset_type == AssetType.THUMBNAIL and not custom_thumb_raw:
+                                    custom_thumb_raw = existing_asset.path
 
-                    bg_path = out_dir / "background.png"
-                    bg_spec = ThumbnailSpec(
-                        title=project.name,
-                        subtitle=channel.name if channel else None,
-                        palette=palette,
-                        aspect_ratio=brand.default_aspect_ratio,
-                        width=res_w,
-                        height=res_h,
-                        motif=motif,
-                    )
-                    bg_res = self._thumbnails.render(bg_spec, bg_path)
-                    artifacts["background"] = str(bg_res.output_path)
-                    self._projects.register_asset(
-                        project.id,
-                        AssetType.BACKGROUND_IMAGE,
-                        str(bg_res.output_path),
-                        checksum=bg_res.checksum,
-                        approved=True,
-                    )
+                    thumb_filename = f"{clean_out_name}_thumbnail.png" if clean_out_name else "thumbnail.png"
+                    thumb_path = out_dir / thumb_filename
+                    if custom_thumb_raw and Path(custom_thumb_raw).exists():
+                        import shutil
+
+                        src_thumb = Path(custom_thumb_raw)
+                        if src_thumb.resolve() != thumb_path.resolve():
+                            shutil.copy2(src_thumb, thumb_path)
+                        artifacts["thumbnail"] = str(thumb_path)
+                        self._projects.register_asset(
+                            project.id,
+                            AssetType.THUMBNAIL,
+                            str(thumb_path),
+                            source_type="custom_upload",
+                            approved=True,
+                        )
+                    else:
+                        thumb_spec = ThumbnailSpec(
+                            title=clean_out_name.replace("_", " ") if clean_out_name else project.name,
+                            subtitle=channel.name if channel else "YouTube Automation Studio",
+                            badge_text=project.project_type.value.replace("_", " ").upper(),
+                            palette=palette,
+                            aspect_ratio=brand.default_aspect_ratio,
+                            motif=motif,
+                        )
+                        thumb_res = self._thumbnails.render(thumb_spec, thumb_path)
+                        artifacts["thumbnail"] = str(thumb_res.output_path)
+                        self._projects.register_asset(
+                            project.id,
+                            AssetType.THUMBNAIL,
+                            str(thumb_res.output_path),
+                            checksum=thumb_res.checksum,
+                            provenance={"palette": thumb_res.palette},
+                            approved=True,
+                        )
+
+                    if custom_vis_raw and Path(custom_vis_raw).exists():
+                        src_vis = Path(custom_vis_raw)
+                        artifacts["background"] = str(src_vis)
+                        self._projects.register_asset(
+                            project.id,
+                            AssetType.BACKGROUND_IMAGE,
+                            str(src_vis),
+                            source_type="custom_upload",
+                            approved=True,
+                        )
+                    else:
+                        bg_filename = f"{clean_out_name}_background.png" if clean_out_name else "background.png"
+                        bg_path = out_dir / bg_filename
+                        bg_spec = ThumbnailSpec(
+                            title=clean_out_name.replace("_", " ") if clean_out_name else project.name,
+                            subtitle=channel.name if channel else None,
+                            palette=palette,
+                            aspect_ratio=brand.default_aspect_ratio,
+                            width=res_w,
+                            height=res_h,
+                            motif=motif,
+                        )
+                        bg_res = self._thumbnails.render(bg_spec, bg_path)
+                        artifacts["background"] = str(bg_res.output_path)
+                        self._projects.register_asset(
+                            project.id,
+                            AssetType.BACKGROUND_IMAGE,
+                            str(bg_res.output_path),
+                            checksum=bg_res.checksum,
+                            approved=True,
+                        )
 
                 elif stage_name == "render_video":
                     mixed_audio_path = Path(artifacts["mixed_audio"])
                     bg_image_path = Path(artifacts.get("background") or artifacts["thumbnail"])
-                    video_path = out_dir / "video.mp4"
+                    video_filename = f"{clean_out_name}.mp4" if clean_out_name else "video.mp4"
+                    video_path = out_dir / video_filename
                     expected_dur = int(artifacts.get("mixed_duration_ms", "1000"))
                     vis_str = str(job.input_data.get("visualizer_style", "none"))
                     fx_dict = dict(job.input_data.get("visual_fx", {}))

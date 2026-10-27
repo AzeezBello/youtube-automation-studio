@@ -183,11 +183,41 @@ QPushButton#AccentButton:hover {
 /* Inputs, Combos, SpinBoxes, TextAreas */
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextEdit, QListWidget {
     background-color: #11131c;
-    color: #e6e9f0;
+    color: #f1f5f9;
     border: 1px solid #2b3147;
     border-radius: 6px;
     padding: 5px 8px;
     selection-background-color: #4f46e5;
+    selection-color: #ffffff;
+}
+
+QComboBox {
+    combobox-popup: 0;
+}
+
+QComboBox QAbstractItemView, QComboBox QListView, QAbstractItemView {
+    background-color: #161926;
+    color: #f1f5f9;
+    border: 1px solid #4f46e5;
+    border-radius: 6px;
+    padding: 4px;
+    selection-background-color: #4f46e5;
+    selection-color: #ffffff;
+    outline: none;
+}
+
+QComboBox QAbstractItemView::item, QComboBox QListView::item, QListWidget::item {
+    min-height: 26px;
+    padding: 4px 8px;
+    background-color: #161926;
+    color: #f1f5f9;
+}
+
+QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:hover,
+QComboBox QListView::item:selected, QComboBox QListView::item:hover,
+QListWidget::item:selected {
+    background-color: #4f46e5;
+    color: #ffffff;
 }
 
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QPlainTextEdit:focus, QTextEdit:focus {
@@ -445,6 +475,35 @@ QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextEdit, QList
     selection-color: #ffffff;
 }
 
+QComboBox {
+    combobox-popup: 0;
+}
+
+QComboBox QAbstractItemView, QComboBox QListView, QAbstractItemView {
+    background-color: #ffffff;
+    color: #0f172a;
+    border: 1px solid #4f46e5;
+    border-radius: 6px;
+    padding: 4px;
+    selection-background-color: #4f46e5;
+    selection-color: #ffffff;
+    outline: none;
+}
+
+QComboBox QAbstractItemView::item, QComboBox QListView::item, QListWidget::item {
+    min-height: 26px;
+    padding: 4px 8px;
+    background-color: #ffffff;
+    color: #0f172a;
+}
+
+QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:hover,
+QComboBox QListView::item:selected, QComboBox QListView::item:hover,
+QListWidget::item:selected {
+    background-color: #4f46e5;
+    color: #ffffff;
+}
+
 QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QPlainTextEdit:focus, QTextEdit:focus {
     border: 1px solid #4f46e5;
 }
@@ -577,3 +636,39 @@ class ThemeManager:
     def get_stylesheet(cls, mode: Optional[str] = None) -> str:
         effective = cls.resolve_effective_theme(mode)
         return LIGHT_STUDIO_STYLESHEET if effective == "light" else DARK_STUDIO_STYLESHEET
+
+    @classmethod
+    def apply_palette(cls, mode: Optional[str] = None) -> None:
+        """Synchronize QApplication palette and global stylesheet so popup menus and dialogs never render low-contrast text."""
+        try:
+            from PySide6.QtGui import QColor, QPalette
+            from PySide6.QtWidgets import QApplication
+
+            app = QApplication.instance()
+            if app is None:
+                return
+            effective = cls.resolve_effective_theme(mode)
+            pal = QPalette()
+            if effective == "light":
+                pal.setColor(QPalette.ColorRole.Window, QColor("#f8fafc"))
+                pal.setColor(QPalette.ColorRole.WindowText, QColor("#0f172a"))
+                pal.setColor(QPalette.ColorRole.Base, QColor("#ffffff"))
+                pal.setColor(QPalette.ColorRole.AlternateBase, QColor("#f1f5f9"))
+                pal.setColor(QPalette.ColorRole.Text, QColor("#0f172a"))
+                pal.setColor(QPalette.ColorRole.Button, QColor("#ffffff"))
+                pal.setColor(QPalette.ColorRole.ButtonText, QColor("#0f172a"))
+                pal.setColor(QPalette.ColorRole.Highlight, QColor("#4f46e5"))
+                pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+            else:
+                pal.setColor(QPalette.ColorRole.Window, QColor("#0f1117"))
+                pal.setColor(QPalette.ColorRole.WindowText, QColor("#f1f5f9"))
+                pal.setColor(QPalette.ColorRole.Base, QColor("#161926"))
+                pal.setColor(QPalette.ColorRole.AlternateBase, QColor("#11131c"))
+                pal.setColor(QPalette.ColorRole.Text, QColor("#f1f5f9"))
+                pal.setColor(QPalette.ColorRole.Button, QColor("#232838"))
+                pal.setColor(QPalette.ColorRole.ButtonText, QColor("#f1f5f9"))
+                pal.setColor(QPalette.ColorRole.Highlight, QColor("#4f46e5"))
+                pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+            app.setPalette(pal)  # type: ignore[attr-defined]
+        except Exception:
+            pass

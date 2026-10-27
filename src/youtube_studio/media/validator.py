@@ -83,6 +83,41 @@ class MediaValidator:
             except Exception:
                 probed = False
 
+        # 1b. If ffprobe is absent but ffmpeg is available, inspect streams via `ffmpeg -i`
+        if not probed and self._ffmpeg.is_available and self._ffmpeg._ffmpeg is not None:
+            try:
+                import re
+                import subprocess
+
+                res = subprocess.run(
+                    [str(self._ffmpeg._ffmpeg), "-i", str(video_path)],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=15,
+                )
+                err = res.stderr or ""
+                v_match = re.search(r"Stream\s+#\d+:\d+.*Video:\s*([a-zA-Z0-9_]+).*?,\s*(\d{2,5})x(\d{2,5})", err)
+                a_match = re.search(r"Stream\s+#\d+:\d+.*Audio:\s*([a-zA-Z0-9_]+)", err)
+                d_match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", err)
+                if v_match or a_match:
+                    probed = True
+                    if v_match:
+                        report.has_video_stream = True
+                        report.video_codec = v_match.group(1)
+                        report.width = int(v_match.group(2))
+                        report.height = int(v_match.group(3))
+                    if a_match:
+                        report.has_audio_stream = True
+                        report.audio_codec = a_match.group(1)
+                    if d_match:
+                        hrs = int(d_match.group(1))
+                        mins = int(d_match.group(2))
+                        secs = float(d_match.group(3))
+                        report.duration_ms = int((hrs * 3600 + mins * 60 + secs) * 1000)
+            except Exception:
+                probed = False
+
         # 2. Fallback ISO-BMFF (ftyp + udta) inspection
         if not probed:
             self._inspect_mp4_header(video_path, report)

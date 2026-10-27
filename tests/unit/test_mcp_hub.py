@@ -310,6 +310,107 @@ class MCPHubAndScannerTests(unittest.TestCase):
         self.assertEqual(cfg.resolved_output_dir(), custom_out.resolve())
         self.assertTrue(custom_out.exists())
 
+    def test_music_library_folders_upload_edit_and_remove(self) -> None:
+        raw_dir = self.root / "incoming_audio"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+        wav_a = raw_dir / "dub_plate_1.wav"
+        wav_b = raw_dir / "dub_plate_1_copy.wav"
+        _write_test_wav(wav_a, freq_hz=440.0)
+        _write_test_wav(wav_b, freq_hz=440.0)
+
+        with self._session_scope() as session:
+            svc = MediaLibraryService(session)
+            scanner = MediaScanner()
+            m1 = svc.upsert(scanner.inspect_file(wav_a))
+            m2 = svc.upsert(scanner.inspect_file(wav_b))
+
+            # Update metadata and folder tag
+            updated = svc.update_metadata(
+                m1.id,
+                title="Roots Dubplate #1",
+                artist="Goldtooth Sound",
+                folder="Reggae Dubplates",
+            )
+            self.assertIsNotNone(updated)
+            assert updated is not None
+            self.assertEqual(updated.metadata["title"], "Roots Dubplate #1")
+            self.assertEqual(updated.metadata["artist"], "Goldtooth Sound")
+            self.assertEqual(updated.metadata["folder"], "Reggae Dubplates")
+
+            # Remove duplicates sharing identical SHA-256 hash
+            removed_dups = svc.remove_duplicates()
+            self.assertEqual(removed_dups, 1)
+            remaining = svc.list_media()
+            self.assertEqual(len(remaining), 1)
+
+            # Delete remaining track
+            self.assertTrue(svc.delete(remaining[0].id))
+            self.assertEqual(len(svc.list_media()), 0)
+
+    def test_express_autopilot_and_custom_image_video_assets(self) -> None:
+        from youtube_studio.domain.services.autopilot_service import ExpressAutopilotService
+        from youtube_studio.media.renderer import RenderSpec, VideoRendererService
+
+        tracks_dir = self.root / "autopilot_tracks"
+        tracks_dir.mkdir(parents=True, exist_ok=True)
+        t1 = tracks_dir / "track_one.wav"
+        t2 = tracks_dir / "track_two.wav"
+        _write_test_wav(t1, freq_hz=220.0)
+        _write_test_wav(t2, freq_hz=330.0)
+
+        # Verify VideoRendererService supports looping video backgrounds (.mp4) as well as images (.png)
+        renderer = VideoRendererService()
+        vid_bg_spec = RenderSpec(
+            audio_path=t1,
+            image_path=self.root / "loop_bg.mp4",
+            output_path=self.root / "out.mp4",
+        )
+        cmd = renderer.build_command(vid_bg_spec)
+        self.assertIn("-stream_loop", cmd)
+        self.assertIn("-1", cmd)
+
+        with self._session_scope() as session:
+            ap = ExpressAutopilotService(session)
+            res = ap.run_autopilot(
+                source_folder=tracks_dir,
+                project_name="Instant Autopilot Release",
+                output_name="Roots_Reggae_Session_Vol_1",
+                render_video=True,
+                export_short=True,
+                output_base_dir=self.root / "autopilot_exports",
+            )
+            self.assertEqual(res.project_name, "Instant Autopilot Release")
+            self.assertEqual(res.track_count, 2)
+            self.assertTrue(res.seo_title)
+            self.assertIsNotNone(res.output_dir)
+            assert res.output_dir is not None
+            self.assertEqual(res.output_dir.name, "Roots_Reggae_Session_Vol_1")
+            self.assertTrue((res.output_dir / "Roots_Reggae_Session_Vol_1.mp4").exists())
+            self.assertTrue((res.output_dir / "Roots_Reggae_Session_Vol_1_audio.wav").exists())
+            self.assertIsNotNone(res.manifest_path)
+            assert res.manifest_path is not None
+            self.assertTrue(res.manifest_path.exists())
+            self.assertIsNotNone(res.short_video_path)
+            assert res.short_video_path is not None
+            self.assertTrue(res.short_video_path.exists())
+            self.assertEqual(res.short_video_path.name, "Roots_Reggae_Session_Vol_1_short_9x16.mp4")
+
+        # Verify TimelineClipItem effective duration & trim math
+        from youtube_studio.ui.timeline_editor import TimelineClipItem
+
+        clip = TimelineClipItem(
+            track_id="trk-1",
+            media_file_id="med-1",
+            title="Ashes Pon the Babylon",
+            artist="Goldtooth",
+            file_path=str(t1),
+            source_duration_ms=160_000,
+            trim_start_ms=5_000,
+            trim_end_ms=145_000,
+            overlap_ms=3_000,
+        )
+        self.assertEqual(clip.effective_duration_ms, 140_000)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 
 from youtube_studio.domain.models.project import TransitionConfig, TransitionType
+from youtube_studio.media.ffmpeg_service import FFmpegService
 
 
 @dataclass
@@ -51,9 +52,7 @@ class AudioMixerService:
     """Builds and runs multi-track or single-track audio mixes."""
 
     def __init__(self, ffmpeg_path: Optional[Path] = None) -> None:
-        self._ffmpeg = ffmpeg_path or (
-            Path(shutil.which("ffmpeg")) if shutil.which("ffmpeg") else None
-        )
+        self._ffmpeg = ffmpeg_path or FFmpegService._find_binary("ffmpeg")
 
     def compute_expected_duration_ms(self, tracks: list[MixTrackInput]) -> int:
         total = 0
@@ -194,6 +193,15 @@ class AudioMixerService:
             res = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if res.returncode == 0 and output_path.exists():
                 dur_ms = self.compute_expected_duration_ms(tracks)
+                if output_path.suffix.lower() == ".wav":
+                    try:
+                        with wave.open(str(output_path), "rb") as wf:
+                            rate = wf.getframerate()
+                            frames = wf.getnframes()
+                            if rate > 0 and frames > 0:
+                                dur_ms = int((frames / rate) * 1000)
+                    except Exception:
+                        pass
                 return MixResult(
                     output_path=output_path,
                     duration_ms=dur_ms,
@@ -311,6 +319,45 @@ class AudioMixerService:
                         return arr, rate
             except Exception:
                 pass
+        # On macOS, use /usr/bin/afconvert to decode MP3/M4A/AAC/FLAC to 16-bit PCM WAV if FFmpeg fallback is triggered
+        afconvert_bin = shutil.which("afconvert")
+        if afconvert_bin and path.exists():
+            import tempfile
+
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+                tmp_wav = Path(tmp.name)
+            try:
+                res = subprocess.run(
+                    [
+                        afconvert_bin,
+                        "-f",
+                        "WAVE",
+                        "-d",
+                        f"LEI16@{default_rate}",
+                        "-c",
+                        "1",
+                        str(path),
+                        str(tmp_wav),
+                    ],
+                    capture_output=True,
+                    check=False,
+                    timeout=60,
+                )
+                if res.returncode == 0 and tmp_wav.exists() and tmp_wav.stat().st_size > 44:
+                    with wave.open(str(tmp_wav), "rb") as wf:
+                        rate = wf.getframerate() or default_rate
+                        raw = wf.readframes(wf.getnframes())
+                        arr = array.array("h")
+                        arr.frombytes(raw[: len(raw) - (len(raw) % 2)])
+                        return arr, rate
+            except Exception:
+                pass
+            finally:
+                try:
+                    tmp_wav.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
         # Synthetic 1-second tone fallback for non-WAV test inputs when FFmpeg is absent
         synthetic = array.array(
             "h",

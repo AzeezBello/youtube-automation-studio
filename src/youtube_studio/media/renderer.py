@@ -7,12 +7,15 @@ import re
 import shutil
 import struct
 import subprocess
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 from typing import Optional
 
 from youtube_studio.domain.models.project import ChapterEntry
+from youtube_studio.media.ffmpeg_service import FFmpegService
+
+VIDEO_BG_EXTS = {".mp4", ".mov", ".webm", ".mkv", ".avi", ".m4v"}
 
 
 class VisualizerStyle(str, Enum):
@@ -77,12 +80,10 @@ class RenderResult:
 
 
 class VideoRendererService:
-    """Combines mixed audio, artwork, multi-style visualizers, motion FX, and chapter overlays into MP4."""
+    """Combines mixed audio, artwork (or background video loop), multi-style visualizers, motion FX, and chapter overlays into MP4."""
 
     def __init__(self, ffmpeg_path: Optional[Path] = None) -> None:
-        self._ffmpeg = ffmpeg_path or (
-            Path(shutil.which("ffmpeg")) if shutil.which("ffmpeg") else None
-        )
+        self._ffmpeg = ffmpeg_path or FFmpegService._find_binary("ffmpeg")
 
     def build_video_filtergraph(self, spec: RenderSpec) -> tuple[str, bool]:
         """
@@ -168,31 +169,44 @@ class VideoRendererService:
         spec.parse_resolution()
         ffmpeg_bin = str(self._ffmpeg) if self._ffmpeg else "ffmpeg"
         filter_str, is_complex = self.build_video_filtergraph(spec)
+        is_video_bg = spec.image_path.suffix.lower() in VIDEO_BG_EXTS
 
-        cmd: list[str] = [
-            ffmpeg_bin,
-            "-y",
-            "-loop",
-            "1",
-            "-framerate",
-            str(spec.fps),
-            "-i",
-            str(spec.image_path),
-            "-i",
-            str(spec.audio_path),
-        ]
+        cmd: list[str] = [ffmpeg_bin, "-y"]
+        if is_video_bg:
+            cmd.extend(
+                [
+                    "-stream_loop",
+                    "-1",
+                    "-i",
+                    str(spec.image_path),
+                    "-i",
+                    str(spec.audio_path),
+                ]
+            )
+        else:
+            cmd.extend(
+                [
+                    "-loop",
+                    "1",
+                    "-framerate",
+                    str(spec.fps),
+                    "-i",
+                    str(spec.image_path),
+                    "-i",
+                    str(spec.audio_path),
+                ]
+            )
 
         if is_complex:
             cmd.extend(["-filter_complex", filter_str, "-map", "[vout]", "-map", "1:a"])
         else:
             cmd.extend(["-vf", filter_str, "-map", "0:v", "-map", "1:a"])
 
+        cmd.extend(["-c:v", spec.video_codec, "-preset", "ultrafast"])
+        if not is_video_bg:
+            cmd.extend(["-tune", "stillimage"])
         cmd.extend(
             [
-                "-c:v",
-                spec.video_codec,
-                "-tune",
-                "stillimage",
                 "-c:a",
                 spec.audio_codec,
                 "-b:a",
@@ -230,7 +244,7 @@ class VideoRendererService:
 
         if self._ffmpeg is not None and self._ffmpeg.exists():
             res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-            if res.returncode == 0 and spec.output_path.exists():
+            if res.returncode == 0 and spec.output_path.exists() and spec.output_path.stat().st_size > 1024:
                 return RenderResult(
                     output_path=spec.output_path,
                     resolution=spec.resolution,
@@ -239,6 +253,25 @@ class VideoRendererService:
                     used_fallback=False,
                     srt_path=srt_path,
                 )
+            # If drawtext filter is not compiled into the FFmpeg binary, retry without drawtext overlay
+            if spec.visual_fx.now_playing_overlay and spec.chapters:
+                fallback_fx = replace(spec.visual_fx, now_playing_overlay=False)
+                retry_spec = replace(spec, visual_fx=fallback_fx)
+                retry_cmd = self.build_command(retry_spec)
+                retry_res = subprocess.run(retry_cmd, capture_output=True, text=True, check=False)
+                if (
+                    retry_res.returncode == 0
+                    and spec.output_path.exists()
+                    and spec.output_path.stat().st_size > 1024
+                ):
+                    return RenderResult(
+                        output_path=spec.output_path,
+                        resolution=spec.resolution,
+                        duration_ms=expected_dur,
+                        command=retry_cmd,
+                        used_fallback=False,
+                        srt_path=srt_path,
+                    )
             if not allow_fallback:
                 raise RuntimeError(f"FFmpeg video render failed: {res.stderr.strip()}")
 

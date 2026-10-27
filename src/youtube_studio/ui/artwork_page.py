@@ -205,11 +205,22 @@ class ArtworkPage(QWidget):
 
         art_layout.addLayout(art_form)
 
+        art_btns_row = QHBoxLayout()
         gen_art_btn = QPushButton("Generate Thumbnail && Artwork")
         gen_art_btn.setObjectName("AccentButton")
         gen_art_btn.setToolTip("Render and register a new PNG thumbnail asset for the selected project.")
         gen_art_btn.clicked.connect(self._on_generate_artwork)
-        art_layout.addWidget(gen_art_btn)
+        art_btns_row.addWidget(gen_art_btn)
+
+        self.upload_custom_asset_btn = QPushButton("🖼/🎬 + Upload Custom Image or Video Asset…")
+        self.upload_custom_asset_btn.setObjectName("PrimaryButton")
+        self.upload_custom_asset_btn.setToolTip(
+            "Upload your own image (.png, .jpg, .webp) or background video loop (.mp4, .mov, .webm) "
+            "to use in your project and video renderer."
+        )
+        self.upload_custom_asset_btn.clicked.connect(self._on_upload_custom_asset)
+        art_btns_row.addWidget(self.upload_custom_asset_btn)
+        art_layout.addLayout(art_btns_row)
 
         self.assets_table = QTableWidget(0, 4)
         self.assets_table.setAlternatingRowColors(True)
@@ -475,6 +486,60 @@ class ArtworkPage(QWidget):
             self._reload_project_details()
         except Exception as exc:
             QMessageBox.critical(self, "Artwork Generation Failed", str(exc))
+
+    def _on_upload_custom_asset(self) -> None:
+        import shutil
+        from youtube_studio.domain.services.autopilot_service import ExpressAutopilotService
+
+        chosen, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Custom Image or Video Asset",
+            str(Path.home()),
+            "Visual Assets (*.png *.jpg *.jpeg *.webp *.gif *.bmp *.mp4 *.mov *.webm *.mkv *.m4v)",
+        )
+        if not chosen:
+            return
+        src = Path(chosen).expanduser().resolve()
+        if not src.exists():
+            return
+
+        dest_dir = get_settings().resolved_data_dir() / "visual_assets"
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        dest = dest_dir / src.name
+        if dest.resolve() != src.resolve():
+            shutil.copy2(src, dest)
+
+        project_id = self.current_project_id()
+        with session_scope() as session:
+            if not project_id:
+                ap = ExpressAutopilotService(session)
+                ch_id, _, _ = ap.ensure_active_channel(self.current_channel_id())
+                proj = ProjectService(session).create_project(ch_id, src.stem)
+                project_id = proj.id
+            proj_svc = ProjectService(session)
+            proj_svc.register_asset(
+                project_id,
+                AssetType.BACKGROUND_IMAGE,
+                str(dest),
+                source_type="custom_upload",
+                approved=True,
+            )
+            if src.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+                proj_svc.register_asset(
+                    project_id,
+                    AssetType.THUMBNAIL,
+                    str(dest),
+                    source_type="custom_upload",
+                    approved=True,
+                )
+        self.refresh()
+        self._reload_project_details()
+        QMessageBox.information(
+            self,
+            "Custom Asset Uploaded & Approved",
+            f"Uploaded and approved '{dest.name}' for your project!\n"
+            "It will automatically be used as the visual background when rendering your video.",
+        )
 
     def _on_approve_asset(self) -> None:
         row = self.assets_table.currentRow()

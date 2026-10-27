@@ -97,6 +97,39 @@ class MediaLibraryService:
                 by_hash.setdefault(mf.file_hash, []).append(mf)
         return {h: group for h, group in by_hash.items() if len(group) > 1}
 
+    def remove_duplicates(self, *, channel_id: Optional[str] = None) -> int:
+        """Remove duplicate MediaFile records sharing the same file_hash, keeping the first entry."""
+        dup_groups = self.find_duplicates(channel_id=channel_id)
+        removed = 0
+        for _file_hash, group in dup_groups.items():
+            for extra in group[1:]:
+                if self.delete(extra.id):
+                    removed += 1
+        return removed
+
+    def update_metadata(
+        self,
+        media_id: str,
+        *,
+        title: Optional[str] = None,
+        artist: Optional[str] = None,
+        folder: Optional[str] = None,
+    ) -> Optional[MediaFile]:
+        """Update title, artist, or folder collection tag for an indexed media file."""
+        orm = self._session.get(MediaFileORM, media_id)
+        if orm is None:
+            return None
+        meta = json.loads(orm.metadata_json or "{}")
+        if title is not None:
+            meta["title"] = title.strip()
+        if artist is not None:
+            meta["artist"] = artist.strip()
+        if folder is not None:
+            meta["folder"] = folder.strip()
+        orm.metadata_json = json.dumps(meta)
+        self._session.flush()
+        return self._to_domain(orm)
+
     def delete(self, media_id: str) -> bool:
         orm = self._session.get(MediaFileORM, media_id)
         if orm is None:

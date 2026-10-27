@@ -35,6 +35,7 @@ AUDIO_EXTENSIONS = {
     ".ape",
     ".wv",
 }
+AUDIO_EXTS = AUDIO_EXTENSIONS
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 

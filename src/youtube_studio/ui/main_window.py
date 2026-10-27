@@ -467,7 +467,12 @@ class MainWindow(QMainWindow):
         """Apply 'dark', 'light', or 'system' theme to the application window and persist preference."""
         saved = ThemeManager.set_preference(mode)
         effective = ThemeManager.resolve_effective_theme(saved)
-        self.setStyleSheet(ThemeManager.get_stylesheet(saved))
+        qss = ThemeManager.get_stylesheet(saved)
+        ThemeManager.apply_palette(saved)
+        self.setStyleSheet(qss)
+        app = QApplication.instance()
+        if app is not None and hasattr(app, "setStyleSheet"):
+            app.setStyleSheet(qss)  # type: ignore[attr-defined]
         if effective == "light":
             self.brand_title.setStyleSheet("color: #0f172a;")
             self.btn_theme.setText("🌙 Dark")
