@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
+    QComboBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -30,10 +31,11 @@ from youtube_studio.security.vault import CredentialVault
 from youtube_studio.storage import session_scope
 from youtube_studio.storage.backup import BackupService
 from youtube_studio.ui.components import EmptyStateWidget
+from youtube_studio.updater import UpdateService
 
 
 class SettingsPage(QWidget):
-    """Unified Settings, Backup/Restore, and Compliance Review Gate page."""
+    """Unified Settings, Software Updates, Backup/Restore, and Compliance Review Gate page."""
 
     VAULT_ACCOUNT = "youtube_data_api_key"
 
@@ -42,6 +44,7 @@ class SettingsPage(QWidget):
         self._vault = CredentialVault()
         self._backup_service = BackupService()
         self._compliance_gate = ComplianceReviewGate()
+        self._update_service = UpdateService()
         self._build_ui()
         self.refresh()
 
@@ -106,6 +109,36 @@ class SettingsPage(QWidget):
         vault_btns.addWidget(btn_clear_key)
         vault_layout.addLayout(vault_btns)
         top_row.addWidget(vault_group, stretch=2)
+
+        # Software Updates & Release Channel Group
+        update_group = QGroupBox("Software Updates & Release Feed")
+        update_layout = QVBoxLayout(update_group)
+        self.lbl_update_status = QLabel("Installed Version: Checking…")
+        self.lbl_update_status.setWordWrap(True)
+        update_layout.addWidget(self.lbl_update_status)
+
+        ch_row = QHBoxLayout()
+        ch_row.addWidget(QLabel("Update Channel:"))
+        self.combo_update_channel = QComboBox()
+        self.combo_update_channel.addItems(["stable", "beta"])
+        self.combo_update_channel.setToolTip("Select 'stable' for production releases or 'beta' for preview builds.")
+        self.combo_update_channel.currentTextChanged.connect(self._on_update_channel_changed)
+        ch_row.addWidget(self.combo_update_channel, stretch=1)
+        update_layout.addLayout(ch_row)
+
+        upd_btns = QHBoxLayout()
+        self.btn_check_updates = QPushButton("Check for Updates")
+        self.btn_check_updates.setObjectName("PrimaryButton")
+        self.btn_check_updates.setToolTip("Check the release manifest for newer versions and SHA-256 verified installers.")
+        self.btn_check_updates.clicked.connect(self._on_check_updates)
+        self.btn_open_website = QPushButton("Download Portal ↗")
+        self.btn_open_website.setToolTip("Open the YouTube Automation Studio download & update website.")
+        self.btn_open_website.clicked.connect(self._on_open_download_website)
+        upd_btns.addWidget(self.btn_check_updates)
+        upd_btns.addWidget(self.btn_open_website)
+        update_layout.addLayout(upd_btns)
+
+        top_row.addWidget(update_group, stretch=2)
 
         root.addLayout(top_row)
 
@@ -209,7 +242,60 @@ class SettingsPage(QWidget):
             if has_key
             else "YouTube Data API v3 Key: <span style='color:#e67e22'>Not configured</span>"
         )
+        prefs = self._update_service.get_preferences()
+        self.combo_update_channel.blockSignals(True)
+        self.combo_update_channel.setCurrentText(str(prefs.get("channel", "stable")))
+        self.combo_update_channel.blockSignals(False)
+        chk = self._update_service.check_for_updates(allow_remote=False)
+        if chk.update_available:
+            self.lbl_update_status.setText(
+                f"Installed: <b>v{chk.current_version}</b> · "
+                f"<span style='color:#38bdf8'>Update Available: v{chk.latest_version}</span>"
+            )
+        else:
+            self.lbl_update_status.setText(
+                f"Installed: <b>v{chk.current_version}</b> · "
+                f"<span style='color:#2ecc71'>Up to date ({chk.channel})</span>"
+            )
         self._refresh_backups_list()
+
+    def _on_update_channel_changed(self, channel: str) -> None:
+        self._update_service.save_preferences(channel=channel)
+        self.refresh()
+
+    def _on_check_updates(self) -> None:
+        res = self._update_service.check_for_updates(allow_remote=False)
+        notes = "\n".join(f"• {n}" for n in res.release_notes[:4])
+        asset_info = ""
+        if res.recommended_asset:
+            a = res.recommended_asset
+            asset_info = (
+                f"\n\nRecommended Installer ({a.os_name}):\n"
+                f"File: {a.filename}\n"
+                f"SHA-256: {a.sha256[:24]}…"
+            )
+        status_title = (
+            f"Update Available: v{res.latest_version}"
+            if res.update_available
+            else f"You Are Up to Date (v{res.current_version})"
+        )
+        QMessageBox.information(
+            self,
+            status_title,
+            f"{status_title}\nChannel: {res.channel} | Published: {res.published_at}\n\n"
+            f"{res.headline}\n\n{notes}{asset_info}",
+        )
+
+    def _on_open_download_website(self) -> None:
+        repo_website = Path(__file__).resolve().parents[3] / "website" / "index.html"
+        if repo_website.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(repo_website)))
+        else:
+            QMessageBox.information(
+                self,
+                "Download Website",
+                f"Download portal location:\n{repo_website}",
+            )
 
     def _refresh_backups_list(self) -> None:
         self.list_backups.clear()

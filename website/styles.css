@@ -1,0 +1,558 @@
+/* YouTube Automation Studio — Mobile-Responsive Download & Update Portal Stylesheet (Light & Dark Mode) */
+:root {
+  /* Explicit light and dark token pairs */
+  --bg-primary-light: #f8fafc;
+  --bg-primary-dark: #090d16;
+  --bg-elevated-light: #ffffff;
+  --bg-elevated-dark: #111827;
+  --bg-card-light: #f1f5f9;
+  --bg-card-dark: #161f33;
+  --border-subtle-light: #cbd5e1;
+  --border-subtle-dark: #1e293b;
+  --text-main-light: #0f172a;
+  --text-main-dark: #f8fafc;
+  --text-muted-light: #475569;
+  --text-muted-dark: #94a3b8;
+  --accent-indigo-light: #4338ca;
+  --accent-indigo-dark: #6366f1;
+  --accent-cyan-light: #0369a1;
+  --accent-cyan-dark: #38bdf8;
+  --scrollbar-track-light: #e2e8f0;
+  --scrollbar-track-dark: #111827;
+  --scrollbar-thumb-light: #64748b;
+  --scrollbar-thumb-dark: #475569;
+
+  /* Default fallback (light) */
+  --bg-primary: var(--bg-primary-light);
+  --bg-elevated: var(--bg-elevated-light);
+  --bg-card: var(--bg-card-light);
+  --border-subtle: var(--border-subtle-light);
+  --text-main: var(--text-main-light);
+  --text-muted: var(--text-muted-light);
+  --accent-indigo: var(--accent-indigo-light);
+  --accent-cyan: var(--accent-cyan-light);
+  --scrollbar-track: var(--scrollbar-track-light);
+  --scrollbar-thumb: var(--scrollbar-thumb-light);
+
+  /* Fallback for browsers without light-dark() support */
+  @media (prefers-color-scheme: dark) {
+    --bg-primary: var(--bg-primary-dark);
+    --bg-elevated: var(--bg-elevated-dark);
+    --bg-card: var(--bg-card-dark);
+    --border-subtle: var(--border-subtle-dark);
+    --text-main: var(--text-main-dark);
+    --text-muted: var(--text-muted-dark);
+    --accent-indigo: var(--accent-indigo-dark);
+    --accent-cyan: var(--accent-cyan-dark);
+    --scrollbar-track: var(--scrollbar-track-dark);
+    --scrollbar-thumb: var(--scrollbar-thumb-dark);
+  }
+
+  /* Use light-dark() so colors follow both system preference and <meta name="color-scheme"> override */
+  @supports (color: light-dark(white, black)) {
+    --bg-primary: light-dark(var(--bg-primary-light), var(--bg-primary-dark));
+    --bg-elevated: light-dark(var(--bg-elevated-light), var(--bg-elevated-dark));
+    --bg-card: light-dark(var(--bg-card-light), var(--bg-card-dark));
+    --border-subtle: light-dark(var(--border-subtle-light), var(--border-subtle-dark));
+    --text-main: light-dark(var(--text-main-light), var(--text-main-dark));
+    --text-muted: light-dark(var(--text-muted-light), var(--text-muted-dark));
+    --accent-indigo: light-dark(var(--accent-indigo-light), var(--accent-indigo-dark));
+    --accent-cyan: light-dark(var(--accent-cyan-light), var(--accent-cyan-dark));
+    --scrollbar-track: light-dark(var(--scrollbar-track-light), var(--scrollbar-track-dark));
+    --scrollbar-thumb: light-dark(var(--scrollbar-thumb-light), var(--scrollbar-thumb-dark));
+  }
+
+  /* MANDATORY: Apply color-scheme to :root and map <meta name="color-scheme"> back to CSS */
+  color-scheme: light dark;
+
+  &:has(> head > meta[name="color-scheme"][content="dark"]) {
+    color-scheme: dark;
+  }
+  &:has(> head > meta[name="color-scheme"][content="light"]) {
+    color-scheme: light;
+  }
+
+  accent-color: var(--accent-indigo);
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  --radius-lg: 14px;
+  --radius-md: 10px;
+}
+
+/* Legacy fallback for WebKit/Blink browsers without scrollbar-color */
+@supports not (scrollbar-color: auto) {
+  ::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+  }
+  ::-webkit-scrollbar-track {
+    background: var(--scrollbar-track);
+  }
+}
+
+/* Forced Colors Mode (Windows High Contrast) fallbacks */
+@media (forced-colors: active) {
+  :root {
+    --bg-primary: Canvas;
+    --bg-elevated: Canvas;
+    --bg-card: Canvas;
+    --border-subtle: CanvasText;
+    --text-main: CanvasText;
+    --text-muted: GrayText;
+    --accent-indigo: Highlight;
+    --accent-cyan: LinkText;
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-block-size: 100dvh;
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+  line-height: 1.6;
+}
+
+/* Sticky Mobile-Responsive Header */
+.site-header {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 20;
+  background-color: var(--bg-elevated);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+.nav-inner {
+  max-inline-size: 1200px;
+  margin-inline: auto;
+  padding: 0.85rem 1.25rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 700;
+  font-size: clamp(1.05rem, 0.9rem + 0.5vw, 1.25rem);
+  color: var(--text-main);
+  text-decoration: none;
+}
+
+.badge-pill {
+  background-color: var(--bg-card);
+  color: var(--accent-indigo);
+  border: 1px solid var(--border-subtle);
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+.nav-links a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.92rem;
+}
+
+.nav-links a:hover {
+  color: var(--text-main);
+}
+
+.theme-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.theme-toggle-btn:hover {
+  border-color: var(--accent-indigo);
+}
+
+/* Main Container */
+.page-shell {
+  max-inline-size: 1200px;
+  margin-inline: auto;
+  padding: clamp(1.5rem, 3vw, 3.5rem) 1.25rem;
+}
+
+/* Hero Section with Fluid Typography (clamp) */
+.hero {
+  text-align: center;
+  max-inline-size: 860px;
+  margin-inline: auto;
+  margin-block-end: 3rem;
+}
+
+.hero h1 {
+  font-size: clamp(2rem, 1.25rem + 3.8vw, 3.6rem);
+  line-height: 1.12;
+  margin: 0.75rem 0 1rem;
+  letter-spacing: -0.02em;
+}
+
+.hero p {
+  font-size: clamp(1rem, 0.92rem + 0.45vw, 1.22rem);
+  color: var(--text-muted);
+  margin-block-end: 1.75rem;
+}
+
+.cta-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.85rem;
+  margin-block-end: 1.25rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.4rem;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.98rem;
+  text-decoration: none;
+  cursor: pointer;
+  border: 1px solid var(--border-subtle);
+}
+
+.btn-primary {
+  background-color: var(--accent-indigo);
+  border-color: var(--accent-indigo);
+  color: #ffffff;
+}
+
+.btn-secondary {
+  background-color: var(--bg-card);
+  color: var(--text-main);
+  border-color: var(--border-subtle);
+}
+
+/* Hero Studio Preview Frame with Explicit Aspect Ratio to prevent CLS */
+.studio-preview-frame {
+  aspect-ratio: 16 / 9;
+  max-inline-size: 980px;
+  margin: 2rem auto 0;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: clamp(0.85rem, 2vw, 1.5rem);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+}
+
+.preview-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-block-end: 1px solid var(--border-subtle);
+  padding-block-end: 0.65rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.window-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.window-dots span {
+  inline-size: 10px;
+  block-size: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-red { background: #ef4444; }
+.dot-amber { background: #f59e0b; }
+.dot-green { background: #10b981; }
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.85rem;
+  margin-block: auto;
+  padding-block: 1rem;
+  text-align: start;
+}
+
+.preview-metric {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.9rem;
+}
+
+.preview-metric strong {
+  display: block;
+  font-size: 1.35rem;
+  color: var(--accent-cyan);
+}
+
+/* Size-Aware Container Queries for Installer & Feature Cards */
+.cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 1.15rem;
+  margin-block: 1.5rem 3rem;
+}
+
+.card-container {
+  container-type: inline-size;
+}
+
+.card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.9rem;
+  block-size: 100%;
+}
+
+.card.recommended-os {
+  border: 2px solid var(--accent-indigo);
+}
+
+.card-details {
+  display: none;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* Media query fallback for older browsers */
+@media (min-width: 600px) {
+  .card-header-flex {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .card-details {
+    display: block;
+  }
+}
+
+/* Container query enhancement where supported */
+@supports (container-type: inline-size) {
+  @container (min-width: 260px) {
+    .card-header-flex {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-details {
+      display: block;
+    }
+  }
+}
+
+.section-heading {
+  font-size: clamp(1.45rem, 1.1rem + 1.5vw, 2.1rem);
+  margin: 2.5rem 0 0.5rem;
+}
+
+.section-subtitle {
+  color: var(--text-muted);
+  margin: 0 0 1.25rem;
+}
+
+/* Update Channel Switcher Bar */
+.channel-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background-color: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 1rem 1.25rem;
+  margin-block-end: 1.5rem;
+}
+
+.channel-toggle-group {
+  display: inline-flex;
+  background-color: var(--bg-primary);
+  padding: 0.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.channel-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: none;
+  padding: 0.45rem 0.95rem;
+  border-radius: 7px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.channel-btn.active {
+  background-color: var(--accent-indigo);
+  color: #ffffff;
+}
+
+/* Responsive Data Table (Sticky Headers + Container Query Stacked Cards on <600px) */
+.table-wrapper {
+  overflow: auto;
+  max-inline-size: 100%;
+  max-block-size: min(520px, 80dvh);
+  container-type: inline-size;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background-color: var(--bg-elevated);
+  margin-block: 1.25rem 2.5rem;
+}
+
+table {
+  inline-size: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  text-align: start;
+  --label-1: "Platform";
+  --label-2: "Installer Package";
+  --label-3: "Architecture";
+  --label-4: "SHA-256 Checksum";
+  --label-5: "Install Command / Action";
+}
+
+caption {
+  text-align: start;
+  padding: 0.9rem 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  border-block-end: 1px solid var(--border-subtle);
+}
+
+th,
+td {
+  padding: 0.8rem 1rem;
+  border-block-end: 1px solid var(--border-subtle);
+  font-size: 0.9rem;
+}
+
+thead {
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 1;
+  background-color: var(--bg-card);
+}
+
+tbody th {
+  position: sticky;
+  inset-inline-start: 0;
+  background-color: var(--bg-elevated);
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+pre,
+code {
+  color-scheme: dark;
+  accent-color: var(--accent-indigo);
+  background-color: #0f172a;
+  color: #38bdf8;
+  padding: 0.15rem 0.4rem;
+  border-radius: 5px;
+  font-size: 0.82rem;
+}
+
+@container (width < 600px) {
+  table,
+  thead,
+  tbody,
+  tr,
+  th,
+  td {
+    display: block;
+  }
+
+  thead {
+    display: none;
+  }
+
+  tr {
+    margin-block-end: 1rem;
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+
+  tbody th {
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    background-color: var(--bg-card);
+  }
+
+  td:nth-child(2)::before {
+    content: var(--label-2) ": ";
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  td:nth-child(3)::before {
+    content: var(--label-3) ": ";
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  td:nth-child(4)::before {
+    content: var(--label-4) ": ";
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+
+  td:nth-child(5)::before {
+    content: var(--label-5) ": ";
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+}
+
+.site-footer {
+  border-block-start: 1px solid var(--border-subtle);
+  padding: 2rem 1.25rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}

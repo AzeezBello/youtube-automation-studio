@@ -28,7 +28,7 @@ class TourStop:
 PRODUCT_TOUR_STOPS: tuple[TourStop, ...] = (
     TourStop(
         nav_index=0,
-        title="1/6 · Dashboard — Command Center & Quick Actions",
+        title="1/7 · Dashboard — Command Center & Quick Actions",
         summary=(
             "Monitor active channels, indexed audio tracks, production projects, and FFmpeg/hardware readiness at a glance."
         ),
@@ -36,7 +36,7 @@ PRODUCT_TOUR_STOPS: tuple[TourStop, ...] = (
     ),
     TourStop(
         nav_index=1,
-        title="2/6 · Research Workspace — Topic Discovery & Hand-Off",
+        title="2/7 · Research Workspace — Topic Discovery & Hand-Off",
         summary=(
             "Search keywords offline or via YouTube Data API v3, group results into TF-IDF topic clusters, and track public watchlists."
         ),
@@ -44,15 +44,15 @@ PRODUCT_TOUR_STOPS: tuple[TourStop, ...] = (
     ),
     TourStop(
         nav_index=2,
-        title="3/6 · Music Library — Audio Scanner, BPM & Camelot Keys",
+        title="3/7 · Music Library — Audio Scanner, BPM & Camelot Keys",
         summary=(
-            "Recursively scan folders for WAV, MP3, FLAC, M4A, AAC, and OGG files. Automatically extracts duration, BPM, Camelot key, and SHA-256 duplicate status."
+            "Recursively scan folders for WAV, MP3, FLAC, M4A, AAC, OGG, AIFF, and OPUS audio files. Extracts duration, BPM, Camelot key, and SHA-256 duplicates."
         ),
         pro_tip="Keep your stems and tracks organized in folders—scanning is incremental and flags exact file duplicates automatically.",
     ),
     TourStop(
         nav_index=3,
-        title="4/6 · Production Studio — Harmonic Mixing, Visualizers & Shorts",
+        title="4/7 · Production Studio — Harmonic Mixing, Visualizers & Shorts",
         summary=(
             "Build single-track or multi-track timelines with Auto-Cue Silence Trim, Smart Harmonic Sort, Bass-Swap EQ transitions, and audio-reactive visualizers."
         ),
@@ -60,7 +60,7 @@ PRODUCT_TOUR_STOPS: tuple[TourStop, ...] = (
     ),
     TourStop(
         nav_index=4,
-        title="5/6 · Artwork & Local AI — Thumbnails & SEO Metadata",
+        title="5/7 · Artwork & Local AI — Thumbnails & SEO Metadata",
         summary=(
             "Generate 3 title candidates, timestamped chapter descriptions, tags, and 16:9 / 9:16 thumbnails using local AI models or procedural brand palettes."
         ),
@@ -68,7 +68,15 @@ PRODUCT_TOUR_STOPS: tuple[TourStop, ...] = (
     ),
     TourStop(
         nav_index=5,
-        title="6/6 · Settings, Snapshots & Compliance Gate",
+        title="6/7 · MCP Hub — Bidirectional Model Context Protocol",
+        summary=(
+            "Expose Studio's 10 tools, 4 studio:// resources, and 2 prompt templates to external AI clients, or connect external stdio/HTTP MCP servers."
+        ),
+        pro_tip="Use the interactive Tool Playground to test any MCP tool directly from the GUI, or copy the JSON-RPC config snippet for Claude Desktop / Cursor.",
+    ),
+    TourStop(
+        nav_index=6,
+        title="7/7 · Settings, Snapshots & Compliance Gate",
         summary=(
             "Manage your Credential Vault API key, create SHA-256 verified SQLite backup snapshots, and run the Pre-Release Compliance Review Gate."
         ),

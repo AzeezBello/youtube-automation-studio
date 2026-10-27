@@ -5,18 +5,21 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QFont
+from PySide6.QtGui import QAction, QFont, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
+    QBoxLayout,
     QFrame,
     QGroupBox,
     QHBoxLayout,
     QLabel,
+    QListView,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -29,13 +32,19 @@ from youtube_studio.media import FFmpegService
 from youtube_studio.storage import session_scope
 from youtube_studio.ui.artwork_page import ArtworkPage
 from youtube_studio.ui.components import EmptyStateWidget, MetricCard
+from youtube_studio.ui.mcp_page import MCPHubPage
 from youtube_studio.ui.music_library_page import MusicLibraryPage
 from youtube_studio.ui.onboarding_dialog import OnboardingDialog
 from youtube_studio.ui.product_tour import ProductTourBanner
 from youtube_studio.ui.production_page import ProductionPage
 from youtube_studio.ui.research_page import ResearchPage
+from youtube_studio.ui.responsive import (
+    MOBILE_BREAKPOINT_PX,
+    apply_responsive_mode_to_page,
+    wrap_in_responsive_scroll,
+)
 from youtube_studio.ui.settings_page import SettingsPage
-from youtube_studio.ui.theme import DARK_STUDIO_STYLESHEET
+from youtube_studio.ui.theme import DARK_STUDIO_STYLESHEET, ThemeManager
 
 
 class PlaceholderPage(QWidget):
@@ -163,9 +172,14 @@ class DashboardPage(QWidget):
         btn_artwork.clicked.connect(lambda: self._nav(4))
         quick_row.addWidget(btn_artwork)
 
-        btn_settings = QPushButton("5. Backup & Compliance Gate")
+        btn_mcp = QPushButton("5. Connect MCP (vidIQ & AI)")
+        btn_mcp.setToolTip("Open MCP Hub to connect preconfigured vidIQ, TubeBuddy, Suno, or external MCP servers.")
+        btn_mcp.clicked.connect(lambda: self._nav(5))
+        quick_row.addWidget(btn_mcp)
+
+        btn_settings = QPushButton("6. Backup & Compliance Gate")
         btn_settings.setToolTip("Open Settings to manage API credentials, create DB snapshots, and audit export manifests.")
-        btn_settings.clicked.connect(lambda: self._nav(5))
+        btn_settings.clicked.connect(lambda: self._nav(6))
         quick_row.addWidget(btn_settings)
 
         layout.addWidget(quick_group)
@@ -252,6 +266,7 @@ class MainWindow(QMainWindow):
         ("Music Library", "music_library", "Scan local audio folders, inspect BPM & Camelot keys, and find duplicates."),
         ("Production", "production", "Build harmonic mixes, apply transitions & visualizers, and render videos/Shorts."),
         ("Artwork", "artwork", "Generate 16:9 / 9:16 thumbnails and SEO metadata with local AI or templates."),
+        ("MCP Hub", "mcp_hub", "Connect AI agents via the built-in Studio MCP Server or manage external MCP servers."),
         ("Settings", "settings", "Manage Credential Vault API keys, SQLite snapshots, and Compliance Review Gate."),
     ]
 
@@ -259,40 +274,72 @@ class MainWindow(QMainWindow):
         super().__init__()
         settings = get_settings()
         self.setWindowTitle(f"{settings.app_name} v{__version__}")
-        self.resize(1280, 820)
-        self.setStyleSheet(DARK_STUDIO_STYLESHEET)
+        self._is_mobile_mode: Optional[bool] = None
+        self.setMinimumSize(360, 500)
         self._build_ui()
         self._build_menu()
-        self.statusBar().showMessage("Ready — Hover over any control for tooltips, or click 'Product Tour' above.")
+        self.apply_theme(ThemeManager.get_preference())
+        self._apply_initial_screen_geometry()
+        self._update_responsive_mode(force=True)
+        self.statusBar().showMessage(
+            "Ready — Hover over any control for tooltips, or click 'Product Tour' above."
+        )
 
         # Automatically trigger onboarding wizard on first interactive launch
         QTimer.singleShot(150, self._maybe_show_first_run_onboarding)
 
+    def _apply_initial_screen_geometry(self) -> None:
+        """Size and center the window within the user's available screen geometry (respecting macOS Menu Bar & Dock)."""
+        screen = QApplication.primaryScreen()
+        if screen is not None:
+            avail = screen.availableGeometry()
+            target_w = min(1120, max(380, int(avail.width() * 0.88)))
+            target_h = min(680, max(500, int(avail.height() * 0.85)))
+            self.resize(target_w, target_h)
+            x = avail.x() + max(0, (avail.width() - target_w) // 2)
+            y = avail.y() + max(0, (avail.height() - target_h) // 2)
+            self.move(x, y)
+        else:
+            self.resize(1040, 660)
+
     def _build_ui(self) -> None:
         central = QWidget()
+        central.setMinimumSize(340, 440)
         self.setCentralWidget(central)
         outer = QVBoxLayout(central)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Top Header Bar with Onboarding & Product Tour controls
+        # Top Header Bar with Hamburger Menu, Responsive Viewport Switcher, Onboarding & Product Tour controls
         header = QFrame()
         header.setObjectName("TopHeaderBar")
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(16, 10, 16, 10)
+        header_layout.setContentsMargins(12, 8, 12, 8)
+        header_layout.setSpacing(8)
 
-        brand_title = QLabel("🎬  YouTube Automation Studio")
-        brand_title.setFont(QFont("", 15, QFont.Weight.Bold))
-        brand_title.setStyleSheet("color: #f8fafc;")
-        header_layout.addWidget(brand_title)
+        self.btn_menu_toggle = QPushButton("☰")
+        self.btn_menu_toggle.setFixedWidth(36)
+        self.btn_menu_toggle.setToolTip("Show or hide the workspace navigation bar (useful on compact/mobile screens).")
+        self.btn_menu_toggle.clicked.connect(self._toggle_nav_visibility)
+        header_layout.addWidget(self.btn_menu_toggle)
 
-        version_badge = QLabel(f"v{__version__} · Local-First Pro Studio")
-        version_badge.setStyleSheet(
+        self.brand_title = QLabel("🎬  YouTube Automation Studio")
+        self.brand_title.setFont(QFont("", 14, QFont.Weight.Bold))
+        self.brand_title.setStyleSheet("color: #f8fafc;")
+        header_layout.addWidget(self.brand_title)
+
+        self.version_badge = QLabel(f"v{__version__} · Local-First Pro Studio")
+        self.version_badge.setStyleSheet(
             "background-color: #1e293b; color: #94a3b8; padding: 3px 8px; "
             "border-radius: 4px; font-size: 11px;"
         )
-        header_layout.addWidget(version_badge)
+        header_layout.addWidget(self.version_badge)
         header_layout.addStretch()
+
+        self.btn_theme = QPushButton("☀️ Light")
+        self.btn_theme.setToolTip("Switch between Dark Mode and Light Mode (or choose System in the View menu).")
+        self.btn_theme.clicked.connect(self.toggle_theme)
+        header_layout.addWidget(self.btn_theme)
 
         self.btn_onboarding = QPushButton("✦ Onboarding Setup")
         self.btn_onboarding.setToolTip(
@@ -304,24 +351,24 @@ class MainWindow(QMainWindow):
         self.btn_tour = QPushButton("🧭 Start Product Tour")
         self.btn_tour.setObjectName("PrimaryButton")
         self.btn_tour.setToolTip(
-            "Launch the interactive 6-step Guided Product Tour across all studio workspaces."
+            "Launch the interactive 7-step Guided Product Tour across all studio workspaces."
         )
         self.btn_tour.clicked.connect(self.start_product_tour)
         header_layout.addWidget(self.btn_tour)
 
         outer.addWidget(header)
 
-        # Main horizontal workspace area (Sidebar + Content column)
-        workspace_row = QHBoxLayout()
-        workspace_row.setContentsMargins(0, 0, 0, 0)
-        workspace_row.setSpacing(0)
+        # Main workspace area (Sidebar/TopBar + Scrollable Content column)
+        self.workspace_row = QBoxLayout(QBoxLayout.Direction.LeftToRight)
+        self.workspace_row.setContentsMargins(0, 0, 0, 0)
+        self.workspace_row.setSpacing(0)
 
-        # Side navigation
+        # Navigation (adapts between Left Vertical Sidebar on Desktop and Top Horizontal Bar on Mobile)
         self.nav = QListWidget()
         self.nav.setObjectName("SideNav")
-        self.nav.setFixedWidth(200)
-        self.nav.setSpacing(4)
-        self.nav.setToolTip("Switch between the 6 studio workspaces.")
+        self.nav.setFixedWidth(190)
+        self.nav.setSpacing(3)
+        self.nav.setToolTip("Switch between the 7 studio workspaces.")
         for label, _, tip in self.NAV_ITEMS:
             item = QListWidgetItem(label)
             item.setToolTip(tip)
@@ -329,12 +376,12 @@ class MainWindow(QMainWindow):
             self.nav.addItem(item)
         self.nav.setCurrentRow(0)
         self.nav.currentRowChanged.connect(self._on_nav_changed)
-        workspace_row.addWidget(self.nav)
+        self.workspace_row.addWidget(self.nav)
 
-        # Right side: Guided Product Tour Banner + Stacked Pages
+        # Right side: Guided Product Tour Banner + Scroll-Wrapped Stacked Pages
         right_container = QVBoxLayout()
-        right_container.setContentsMargins(12, 10, 12, 10)
-        right_container.setSpacing(8)
+        right_container.setContentsMargins(10, 8, 10, 8)
+        right_container.setSpacing(6)
 
         self.tour_banner = ProductTourBanner(
             on_select_nav=self._select_nav_from_tour,
@@ -343,6 +390,8 @@ class MainWindow(QMainWindow):
         right_container.addWidget(self.tour_banner)
 
         self.stack = QStackedWidget()
+        self.stack.setMinimumSize(280, 220)
+        self.stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self.pages: dict[str, QWidget] = {
             "dashboard": DashboardPage(
                 on_navigate=self.nav.setCurrentRow,
@@ -353,14 +402,76 @@ class MainWindow(QMainWindow):
             "music_library": MusicLibraryPage(),
             "production": ProductionPage(),
             "artwork": ArtworkPage(),
+            "mcp_hub": MCPHubPage(),
             "settings": SettingsPage(),
         }
         for _, key, _ in self.NAV_ITEMS:
-            self.stack.addWidget(self.pages[key])
+            scroll_wrapper = wrap_in_responsive_scroll(self.pages[key], parent=self.stack)
+            self.stack.addWidget(scroll_wrapper)
         right_container.addWidget(self.stack, stretch=1)
 
-        workspace_row.addLayout(right_container, stretch=1)
-        outer.addLayout(workspace_row, stretch=1)
+        self.workspace_row.addLayout(right_container, stretch=1)
+        outer.addLayout(self.workspace_row, stretch=1)
+
+    def _toggle_nav_visibility(self) -> None:
+        self.nav.setVisible(not self.nav.isVisible())
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self._update_responsive_mode()
+
+    def _update_responsive_mode(self, *, force: bool = False) -> None:
+        is_mobile = self.width() < MOBILE_BREAKPOINT_PX
+        if not force and self._is_mobile_mode == is_mobile:
+            return
+        self._is_mobile_mode = is_mobile
+
+        if is_mobile:
+            self.workspace_row.setDirection(QBoxLayout.Direction.TopToBottom)
+            self.nav.setFlow(QListView.Flow.LeftToRight)
+            self.nav.setWrapping(False)
+            self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.nav.setMinimumWidth(0)
+            self.nav.setMaximumWidth(16777215)
+            self.nav.setFixedHeight(48)
+            self.version_badge.setVisible(False)
+            self.brand_title.setText("🎬 YT Studio")
+            self.btn_onboarding.setText("✦ Setup")
+            self.btn_tour.setText("🧭 Tour")
+        else:
+            self.workspace_row.setDirection(QBoxLayout.Direction.LeftToRight)
+            self.nav.setFlow(QListView.Flow.TopToBottom)
+            self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+            self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            self.nav.setFixedWidth(190)
+            self.nav.setMinimumHeight(0)
+            self.nav.setMaximumHeight(16777215)
+            self.version_badge.setVisible(True)
+            self.brand_title.setText("🎬  YouTube Automation Studio")
+            self.btn_onboarding.setText("✦ Onboarding Setup")
+            self.btn_tour.setText("🧭 Start Product Tour")
+
+        for page in self.pages.values():
+            apply_responsive_mode_to_page(page, is_mobile)
+
+    def apply_theme(self, mode: str) -> None:
+        """Apply 'dark', 'light', or 'system' theme to the application window and persist preference."""
+        saved = ThemeManager.set_preference(mode)
+        effective = ThemeManager.resolve_effective_theme(saved)
+        self.setStyleSheet(ThemeManager.get_stylesheet(saved))
+        if effective == "light":
+            self.brand_title.setStyleSheet("color: #0f172a;")
+            self.btn_theme.setText("🌙 Dark")
+        else:
+            self.brand_title.setStyleSheet("color: #f8fafc;")
+            self.btn_theme.setText("☀️ Light")
+
+    def toggle_theme(self) -> None:
+        """Toggle between Dark Mode and Light Mode."""
+        current_effective = ThemeManager.resolve_effective_theme()
+        next_mode = "light" if current_effective == "dark" else "dark"
+        self.apply_theme(next_mode)
 
     def _build_menu(self) -> None:
         menubar = self.menuBar()
@@ -368,6 +479,19 @@ class MainWindow(QMainWindow):
         quit_action = QAction("E&xit", self)
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
+
+        view_menu = menubar.addMenu("&View")
+        dark_action = QAction("🌙 &Dark Mode", self)
+        dark_action.triggered.connect(lambda: self.apply_theme("dark"))
+        view_menu.addAction(dark_action)
+
+        light_action = QAction("☀️ &Light Mode", self)
+        light_action.triggered.connect(lambda: self.apply_theme("light"))
+        view_menu.addAction(light_action)
+
+        system_action = QAction("💻 &Follow System Theme", self)
+        system_action.triggered.connect(lambda: self.apply_theme("system"))
+        view_menu.addAction(system_action)
 
         help_menu = menubar.addMenu("&Help")
         onboarding_action = QAction("&Onboarding Setup Wizard…", self)

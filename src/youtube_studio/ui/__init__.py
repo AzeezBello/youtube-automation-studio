@@ -1,6 +1,7 @@
 from .artwork_page import ArtworkPage
 from .components import EmptyStateWidget, MetricCard
 from .main_window import DashboardPage, MainWindow, PlaceholderPage
+from .mcp_page import MCPHubPage
 from .music_library_page import MusicLibraryPage
 from .onboarding_dialog import OnboardingDialog
 from .product_tour import PRODUCT_TOUR_STOPS, ProductTourBanner
@@ -14,6 +15,7 @@ __all__ = [
     "DARK_STUDIO_STYLESHEET",
     "DashboardPage",
     "EmptyStateWidget",
+    "MCPHubPage",
     "MainWindow",
     "MetricCard",
     "MusicLibraryPage",

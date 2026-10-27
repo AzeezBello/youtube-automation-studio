@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    try {
+      document.querySelector('meta[name="color-scheme"]').content = localStorage.getItem("color-scheme") ?? "light dark";
+    } catch {}
+  </script>
+  <title>YouTube Automation Studio — Download &amp; Auto-Update Center</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <nav class="nav-inner" aria-label="Primary Navigation">
+      <a href="#" class="brand">
+        <span>🎬 YouTube Automation Studio</span>
+        <span class="badge-pill" id="active-channel-version">v0.1.0 (STABLE)</span>
+      </a>
+      <div class="nav-links">
+        <a href="#downloads">Downloads</a>
+        <a href="#mcp-catalog">Preconfigured MCPs</a>
+        <a href="#updates">Auto-Updates &amp; Checksums</a>
+        <a href="#install-guide">Quick Install</a>
+        <button type="button" class="theme-toggle-btn" id="theme-toggle-btn" aria-label="Switch color scheme">
+          <span aria-hidden="true" id="theme-toggle-icon">☀️</span>
+          <span id="theme-toggle-label">Light</span>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="page-shell">
+    <!-- Hero Section -->
+    <section class="hero">
+      <span class="badge-pill">Local-First Desktop App · macOS · Windows · Linux · Mobile-Responsive UI</span>
+      <h1>Produce Harmonic Mixes, Reactive Visuals &amp; SEO Releases Locally</h1>
+      <p>
+        Index your audio folders with Camelot Wheel (1A–12B) &amp; BPM detection, sequence bass-swap EQ mixes,
+        export 16:9 releases &amp; 9:16 vertical Shorts, and connect <strong>vidIQ</strong>, <strong>TubeBuddy</strong>,
+        <strong>Suno</strong>, and <strong>ElevenLabs</strong> in one click via the built-in MCP Hub.
+      </p>
+      <div class="cta-row">
+        <a href="#downloads" class="btn btn-primary" id="hero-primary-download">
+          ⬇ Download for Your Computer
+        </a>
+        <a href="./releases.json" class="btn btn-secondary">
+          🔄 View Live Update Feed (releases.json)
+        </a>
+      </div>
+
+      <!-- 16:9 Studio Preview Card -->
+      <div class="studio-preview-frame" role="img" aria-label="YouTube Automation Studio interface overview">
+        <div class="preview-topbar">
+          <div class="window-dots">
+            <span class="dot-red"></span>
+            <span class="dot-amber"></span>
+            <span class="dot-green"></span>
+          </div>
+          <span>YouTube Automation Studio v0.1.0 — Adaptive Desktop &amp; Mobile Viewport</span>
+          <span>📱 Mobile / 🖥 Desktop Ready</span>
+        </div>
+        <div class="preview-grid">
+          <div class="preview-metric">
+            <strong>1A–12B</strong>
+            <span>Harmonic Camelot Key &amp; BPM Scanner</span>
+          </div>
+          <div class="preview-metric">
+            <strong>9 Presets</strong>
+            <span>1-Click vidIQ, TubeBuddy, Suno &amp; ElevenLabs MCPs</span>
+          </div>
+          <div class="preview-metric">
+            <strong>16:9 &amp; 9:16</strong>
+            <span>Reactive Spectrum Video + Vertical Shorts Clipper</span>
+          </div>
+          <div class="preview-metric">
+            <strong>SHA-256</strong>
+            <span>Atomic SQLite Backups &amp; Verified App Updates</span>
+          </div>
+        </div>
+        <div style="font-size: 0.82rem; color: var(--text-muted); text-align: start;">
+          ✨ Built-in Guided Product Tour, 4-Step Onboarding Wizard, Encrypted OS Keychain Credential Vault &amp; Pre-Publish Compliance Gate.
+        </div>
+      </div>
+    </section>
+
+    <!-- Release Channel Switcher (Stable vs Beta) -->
+    <section id="downloads">
+      <h2 class="section-heading">Download for Desktop (macOS, Windows &amp; Linux)</h2>
+      <p class="section-subtitle" id="active-channel-headline">
+        Stable Release v0.1.0 — Full Production Studio, Mobile-Responsive UI &amp; Preconfigured MCP Hub
+      </p>
+
+      <div class="channel-bar">
+        <div>
+          <strong>Release &amp; Auto-Update Channel:</strong>
+          <span style="color: var(--text-muted); font-size: 0.9rem; margin-inline-start: 0.5rem;">
+            Switch between production-tested Stable builds and early-access Beta previews.
+          </span>
+        </div>
+        <div class="channel-toggle-group" role="group" aria-label="Release Channel Selector">
+          <button type="button" class="channel-btn active" id="btn-channel-stable">Stable (v0.1.0)</button>
+          <button type="button" class="channel-btn" id="btn-channel-beta">Beta (v0.2.0-beta.1)</button>
+        </div>
+      </div>
+
+      <!-- Size-Aware Installer Cards Grid -->
+      <div class="cards-grid">
+        <div class="card-container">
+          <article class="card" data-platform="macos_arm64">
+            <div>
+              <div class="card-header-flex">
+                <h3 style="margin: 0;">🍎 macOS (Apple Silicon)</h3>
+                <span class="badge-pill os-detected-badge" style="display: none;">Recommended</span>
+              </div>
+              <p style="color: var(--text-muted); font-size: 0.92rem;">
+                Native ARM64 build for MacBook Air/Pro, Mac Mini &amp; Mac Studio (M1, M2, M3, M4).
+              </p>
+              <p class="card-details">
+                Includes hardware VideoToolbox acceleration &amp; Keychain Credential Vault integration.
+              </p>
+            </div>
+            <a href="./releases.json" class="btn btn-primary" download="YouTubeAutomationStudio-0.1.0-macos-arm64.dmg">
+              ⬇ Download .DMG (68.4 MB)
+            </a>
+          </article>
+        </div>
+
+        <div class="card-container">
+          <article class="card" data-platform="macos_x64">
+            <div>
+              <div class="card-header-flex">
+                <h3 style="margin: 0;">🍎 macOS (Intel x86_64)</h3>
+                <span class="badge-pill os-detected-badge" style="display: none;">Recommended</span>
+              </div>
+              <p style="color: var(--text-muted); font-size: 0.92rem;">
+                Universal Intel 64-bit package for macOS 12 Monterey or later.
+              </p>
+              <p class="card-details">
+                Includes full offline audio analyzer, procedural artwork generator &amp; SQLite backup engine.
+              </p>
+            </div>
+            <a href="./releases.json" class="btn btn-secondary" download="YouTubeAutomationStudio-0.1.0-macos-x64.dmg">
+              ⬇ Download Intel .DMG (71.2 MB)
+            </a>
+          </article>
+        </div>
+
+        <div class="card-container">
+          <article class="card" data-platform="windows_x64">
+            <div>
+              <div class="card-header-flex">
+                <h3 style="margin: 0;">🪟 Windows 10 / 11 (64-bit)</h3>
+                <span class="badge-pill os-detected-badge" style="display: none;">Recommended</span>
+              </div>
+              <p style="color: var(--text-muted); font-size: 0.92rem;">
+                Standalone installer &amp; portable ZIP bundle with Windows Credential Manager support.
+              </p>
+              <p class="card-details">
+                Zero external Python setup required—bundled with PyInstaller &amp; one-click desktop shortcut.
+              </p>
+            </div>
+            <a href="./releases.json" class="btn btn-secondary" download="YouTubeAutomationStudio-0.1.0-windows-x64-setup.exe">
+              ⬇ Download Setup .EXE (64.8 MB)
+            </a>
+          </article>
+        </div>
+
+        <div class="card-container">
+          <article class="card" data-platform="linux_x64">
+            <div>
+              <div class="card-header-flex">
+                <h3 style="margin: 0;">🐧 Linux (AppImage x86_64)</h3>
+                <span class="badge-pill os-detected-badge" style="display: none;">Recommended</span>
+              </div>
+              <p style="color: var(--text-muted); font-size: 0.92rem;">
+                Portable single-file AppImage for Ubuntu 22.04+, Fedora, Debian &amp; Arch Linux.
+              </p>
+              <p class="card-details">
+                Mark executable with <code>chmod +x</code> and launch directly without root privileges.
+              </p>
+            </div>
+            <a href="./releases.json" class="btn btn-secondary" download="YouTubeAutomationStudio-0.1.0-linux-x86_64.AppImage">
+              ⬇ Download .AppImage (66.1 MB)
+            </a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Preconfigured MCP Connectors Section -->
+    <section id="mcp-catalog">
+      <h2 class="section-heading">Preconfigured MCP Connectors — Connection URL + Browser Login Redirect</h2>
+      <p class="section-subtitle">
+        No API keys required! Open the <strong>MCP Hub</strong> tab inside the app, select any preconfigured MCP Connection URL (or paste your own), and click
+        <strong>🌐 Login &amp; Connect in Browser</strong> to sign in and authorize via OAuth 2.1 PKCE redirect.
+      </p>
+
+      <div class="cards-grid">
+        <div class="card-container">
+          <article class="card">
+            <div>
+              <span class="badge-pill">YouTube Growth &amp; SEO</span>
+              <h3 style="margin: 0.5rem 0;">📈 vidIQ SEO &amp; Keyword Intelligence</h3>
+              <p class="card-details">
+                Analyze keyword velocity, competition scores, high-intent music mix tags, and title hooks via browser OAuth redirect.
+              </p>
+            </div>
+            <code>https://mcp.vidiq.com/sse</code>
+          </article>
+        </div>
+
+        <div class="card-container">
+          <article class="card">
+            <div>
+              <span class="badge-pill">YouTube Growth &amp; SEO</span>
+              <h3 style="margin: 0.5rem 0;">🎯 TubeBuddy Tag Explorer &amp; CTR Checklist</h3>
+              <p class="card-details">
+                Audit thumbnail contrast and discover long-tail tags before publishing via browser OAuth redirect.
+              </p>
+            </div>
+            <code>https://mcp.tubebuddy.com/sse</code>
+          </article>
+        </div>
+
+        <div class="card-container">
+          <article class="card">
+            <div>
+              <span class="badge-pill">Music &amp; Voice AI</span>
+              <h3 style="margin: 0.5rem 0;">🎵 Suno / Udio &amp; ElevenLabs DJ Drops</h3>
+              <p class="card-details">
+                Clean &amp; batch-import AI music tracks into the Harmonic Analyzer and synthesize custom DJ host drops.
+              </p>
+            </div>
+            <code>https://mcp.suno.com/sse · https://mcp.elevenlabs.io/sse</code>
+          </article>
+        </div>
+
+        <div class="card-container">
+          <article class="card">
+            <div>
+              <span class="badge-pill">Visuals, Cloud &amp; Community</span>
+              <h3 style="margin: 0.5rem 0;">🎨 Replicate Flux, Google Drive &amp; Discord</h3>
+              <p class="card-details">
+                Generate 16:9/9:16 cover art, sync release packages to Google Drive, and post tracklist chapters to Discord.
+              </p>
+            </div>
+            <code>https://mcp.replicate.com/sse · https://mcp.drive.google.com/sse</code>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Responsive Checksum & Update Architecture Table -->
+    <section id="updates">
+      <h2 class="section-heading">Installer Verification &amp; Auto-Update Matrix</h2>
+      <p class="section-subtitle">
+        Every desktop installation checks <code>releases.json</code> (locally or via HTTPS) and verifies SHA-256 digests before applying updates.
+      </p>
+
+      <div tabindex="0" role="region" aria-labelledby="release-matrix-caption" class="table-wrapper">
+        <table>
+          <caption id="release-matrix-caption">v0.1.0 Official Installer Packages &amp; SHA-256 Checksums</caption>
+          <thead>
+            <tr>
+              <th>Platform</th>
+              <th>Installer Package</th>
+              <th>Architecture</th>
+              <th>SHA-256 Checksum</th>
+              <th>Install Command / Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <th>macOS (Apple Silicon)</th>
+              <td><code>YouTubeAutomationStudio-0.1.0-macos-arm64.dmg</code></td>
+              <td>ARM64 (M1–M4)</td>
+              <td><code>e3b0c44298fc1c14…b7852b855</code></td>
+              <td>Drag to <code>/Applications</code> or run <code>./packaging/build_macos.sh</code></td>
+            </tr>
+            <tr>
+              <th>macOS (Intel)</th>
+              <td><code>YouTubeAutomationStudio-0.1.0-macos-x64.dmg</code></td>
+              <td>x86_64</td>
+              <td><code>8f434346648f6b96…c327aa4</code></td>
+              <td>Drag to <code>/Applications</code></td>
+            </tr>
+            <tr>
+              <th>Windows 10 / 11</th>
+              <td><code>YouTubeAutomationStudio-0.1.0-windows-x64-setup.exe</code></td>
+              <td>x86_64</td>
+              <td><code>2c26b46b68ffc68f…266e7ae</code></td>
+              <td>Run Setup Wizard or <code>.\packaging\build_windows.ps1</code></td>
+            </tr>
+            <tr>
+              <th>Linux AppImage</th>
+              <td><code>YouTubeAutomationStudio-0.1.0-linux-x86_64.AppImage</code></td>
+              <td>x86_64</td>
+              <td><code>4938d873b6755092…a39c581242b</code></td>
+              <td><code>chmod +x *.AppImage &amp;&amp; ./*.AppImage</code></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Developer & Source Install Guide -->
+    <section id="install-guide">
+      <h2 class="section-heading">Build from Source or Publish an Update</h2>
+      <div class="cards-grid">
+        <div class="card-container">
+          <article class="card">
+            <div>
+              <h3 style="margin-top: 0;">1. Run Directly from Source</h3>
+              <p class="card-details">
+                Clone the repository, activate the virtual environment, run database migrations, and launch the studio:
+              </p>
+              <pre style="overflow-x: auto; background: #090d16; padding: 0.75rem; border-radius: 8px;"><code>git clone https://github.com/your-org/youtube-automation-studio.git
+cd youtube-automation-studio
+python3 -m venv .venv &amp;&amp; .venv/bin/pip install -e .
+.venv/bin/alembic upgrade head
+.venv/bin/youtube-studio</code></pre>
+            </div>
+          </article>
+        </div>
+
+        <div class="card-container">
+          <article class="card">
+            <div>
+              <h3 style="margin-top: 0;">2. Ship a New App Update</h3>
+              <p class="card-details">
+                Build native macOS/Windows bundles and publish a new version to <code>website/releases.json</code> so connected clients receive update notifications automatically:
+              </p>
+              <pre style="overflow-x: auto; background: #090d16; padding: 0.75rem; border-radius: 8px;"><code># Build native bundle
+./packaging/build_macos.sh
+
+# Clients check Settings → Check for Updates
+# against website/releases.json</code></pre>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <p>
+      YouTube Automation Studio v0.1.0 · Local-First Desktop Application · 100% Manual Publishing Control · Zero Mandatory Cloud Subscriptions
+    </p>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+</html>

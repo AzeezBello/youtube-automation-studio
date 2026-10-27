@@ -1,0 +1,68 @@
+{
+  "version": "0.1.0",
+  "channel": "stable",
+  "published_at": "2026-10-27T12:00:00Z",
+  "min_supported_version": "0.1.0",
+  "headline": "Mobile-Responsive Dark Studio, Preconfigured MCP Hub (vidIQ, TubeBuddy, Suno) & Harmonic Mixing Engine",
+  "release_notes": [
+    "Preconfigured 1-Click MCP Hub: Connect vidIQ, TubeBuddy, YouTube Data API v3, Suno/Udio, ElevenLabs, Replicate Flux Pro, Brave Search, Google Drive & Discord by linking your account key in 1 click.",
+    "Mobile-Responsive Adaptive UI: Automatic screen-aware geometry, collapsible navigation bar, vertical split stacking on narrow/mobile screens, and 1-click Mobile/Desktop viewport toggle.",
+    "Harmonic Mixing & Pro Video Engine: Camelot Wheel (1A–12B) key detection, BPM estimation, Auto-Cue Silence Trim, Bass-Swap EQ transitions, and 4 audio-reactive visualizers.",
+    "9:16 Vertical Shorts Auto-Clipper & Dynamic 'Now Playing' Subtitle Overlays (.srt).",
+    "In-App Auto-Update Checker & SHA-256 Verified Desktop Installers for macOS (Apple Silicon & Intel), Windows 10/11, and Linux."
+  ],
+  "channels": {
+    "stable": {
+      "version": "0.1.0",
+      "published_at": "2026-10-27T12:00:00Z",
+      "headline": "Stable Release v0.1.0 — Full Production Studio & Preconfigured MCP Hub"
+    },
+    "beta": {
+      "version": "0.2.0-beta.1",
+      "published_at": "2026-10-27T12:00:00Z",
+      "headline": "Beta Channel v0.2.0-beta.1 — Multi-Track Stem Separation & Delta Auto-Updater Preview"
+    }
+  },
+  "platforms": {
+    "macos_arm64": {
+      "platform_key": "macos_arm64",
+      "os_name": "macOS (Apple Silicon M1/M2/M3/M4)",
+      "arch": "arm64",
+      "filename": "YouTubeAutomationStudio-0.1.0-macos-arm64.dmg",
+      "download_url": "./downloads/YouTubeAutomationStudio-0.1.0-macos-arm64.dmg",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "size_bytes": 68400000,
+      "install_hint": "Open the .dmg image and drag 'YouTube Automation Studio.app' to Applications."
+    },
+    "macos_x64": {
+      "platform_key": "macos_x64",
+      "os_name": "macOS (Intel x86_64)",
+      "arch": "x86_64",
+      "filename": "YouTubeAutomationStudio-0.1.0-macos-x64.dmg",
+      "download_url": "./downloads/YouTubeAutomationStudio-0.1.0-macos-x64.dmg",
+      "sha256": "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
+      "size_bytes": 71200000,
+      "install_hint": "Open the .dmg image and drag 'YouTube Automation Studio.app' to Applications."
+    },
+    "windows_x64": {
+      "platform_key": "windows_x64",
+      "os_name": "Windows 10 / 11 (64-bit)",
+      "arch": "x86_64",
+      "filename": "YouTubeAutomationStudio-0.1.0-windows-x64-setup.exe",
+      "download_url": "./downloads/YouTubeAutomationStudio-0.1.0-windows-x64-setup.exe",
+      "sha256": "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+      "size_bytes": 64800000,
+      "install_hint": "Run the Setup .exe installer or extract the portable .zip archive."
+    },
+    "linux_x64": {
+      "platform_key": "linux_x64",
+      "os_name": "Linux (Ubuntu / Fedora / Arch)",
+      "arch": "x86_64",
+      "filename": "YouTubeAutomationStudio-0.1.0-linux-x86_64.AppImage",
+      "download_url": "./downloads/YouTubeAutomationStudio-0.1.0-linux-x86_64.AppImage",
+      "sha256": "4938d873b6755092912b54f97033052206192a4e13269738a2011a39c581242b",
+      "size_bytes": 66100000,
+      "install_hint": "chmod +x YouTubeAutomationStudio-*.AppImage && ./YouTubeAutomationStudio-*.AppImage"
+    }
+  }
+}

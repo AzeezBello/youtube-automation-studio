@@ -1,8 +1,10 @@
-"""Recursive media library scanner (MP3/WAV/FLAC/M4A/AAC/OGG + images/videos)."""
+"""Recursive media library scanner (MP3/WAV/FLAC/M4A/AAC/OGG/AIFF/OPUS + video/image containers)."""
 
 from __future__ import annotations
 
 import hashlib
+import os
+import unicodedata
 import wave
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -17,9 +19,24 @@ from youtube_studio.media.waveform import WaveformGenerator
 if TYPE_CHECKING:
     from youtube_studio.domain.services.media_service import MediaLibraryService
 
-AUDIO_EXTENSIONS = {".mp3", ".wav", ".flac", ".m4a", ".aac", ".ogg"}
+AUDIO_EXTENSIONS = {
+    ".mp3",
+    ".wav",
+    ".flac",
+    ".m4a",
+    ".aac",
+    ".ogg",
+    ".opus",
+    ".aiff",
+    ".aif",
+    ".wma",
+    ".alac",
+    ".mp2",
+    ".ape",
+    ".wv",
+}
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
-VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm"}
+VIDEO_EXTENSIONS = {".mp4", ".mov", ".mkv", ".webm", ".m4v"}
 
 
 def _utcnow() -> datetime:
@@ -31,6 +48,7 @@ class ScanSummary:
     scanned_files: list[MediaFile] = field(default_factory=list)
     duplicates_by_hash: dict[str, list[MediaFile]] = field(default_factory=dict)
     errors: dict[str, str] = field(default_factory=dict)
+    skipped_extensions: dict[str, int] = field(default_factory=dict)
 
 
 class MediaScanner:
@@ -47,6 +65,42 @@ class MediaScanner:
         self._waveform = waveform_generator or WaveformGenerator()
         self._include_waveforms = include_waveforms
 
+    @staticmethod
+    def resolve_directory(raw_dir: Path | str) -> Path:
+        """Resolve directory path with macOS Unicode (NFC/NFD) and curly-quote fallback."""
+        expanded = Path(raw_dir).expanduser()
+        if expanded.exists() and expanded.is_dir():
+            return expanded.resolve()
+
+        parent = expanded.parent
+        target_name = expanded.name
+        if parent.exists() and parent.is_dir():
+            norm_target = (
+                unicodedata.normalize("NFC", target_name)
+                .replace("“", '"')
+                .replace("”", '"')
+                .replace("‘", "'")
+                .replace("’", "'")
+                .lower()
+            )
+            try:
+                for child in parent.iterdir():
+                    if not child.is_dir():
+                        continue
+                    norm_child = (
+                        unicodedata.normalize("NFC", child.name)
+                        .replace("“", '"')
+                        .replace("”", '"')
+                        .replace("‘", "'")
+                        .replace("’", "'")
+                        .lower()
+                    )
+                    if norm_child == norm_target:
+                        return child.resolve()
+            except OSError:
+                pass
+        return expanded.resolve()
+
     def scan_directory(
         self,
         root_dir: Path,
@@ -55,20 +109,38 @@ class MediaScanner:
         media_service: Optional[MediaLibraryService] = None,
         audio_only: bool = True,
     ) -> ScanSummary:
-        root = root_dir.expanduser().resolve()
+        root = self.resolve_directory(root_dir)
         if not root.exists() or not root.is_dir():
             raise FileNotFoundError(f"Directory does not exist: {root}")
 
         summary = ScanSummary()
         by_hash: dict[str, list[MediaFile]] = {}
+        discovered_files: list[Path] = []
 
-        for file_path in sorted(root.rglob("*")):
-            if not file_path.is_file() or file_path.name.startswith("."):
-                continue
-            media_type = self._classify_extension(file_path.suffix)
+        def _on_walk_error(os_err: OSError) -> None:
+            err_path = getattr(os_err, "filename", None) or str(root)
+            summary.errors[str(err_path)] = (
+                f"{os_err.strerror or os_err} (Check macOS folder permissions for Downloads/Music)"
+            )
+
+        for dirpath, dirnames, filenames in os.walk(str(root), onerror=_on_walk_error):
+            # Skip hidden directories
+            dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+            for fname in sorted(filenames):
+                if fname.startswith("."):
+                    continue
+                discovered_files.append(Path(dirpath) / fname)
+
+        for file_path in discovered_files:
+            ext = file_path.suffix.lower()
+            media_type = self._classify_extension(ext)
             if media_type is None:
+                if ext:
+                    summary.skipped_extensions[ext] = summary.skipped_extensions.get(ext, 0) + 1
                 continue
+
             if audio_only and media_type != MediaType.AUDIO:
+                summary.skipped_extensions[ext] = summary.skipped_extensions.get(ext, 0) + 1
                 continue
 
             try:
@@ -89,12 +161,13 @@ class MediaScanner:
         file_path: Path,
         *,
         channel_id: Optional[str] = None,
+        force_media_type: Optional[MediaType] = None,
     ) -> MediaFile:
         resolved = file_path.expanduser().resolve()
         if not resolved.exists():
             raise FileNotFoundError(f"File not found: {resolved}")
 
-        media_type = self._classify_extension(resolved.suffix) or MediaType.OTHER
+        media_type = force_media_type or self._classify_extension(resolved.suffix) or MediaType.OTHER
         file_hash = self._compute_sha256(resolved)
         stat = resolved.stat()
 
@@ -162,6 +235,8 @@ class MediaScanner:
             import mutagen
 
             audio = mutagen.File(str(path), easy=True)
+            if audio is None:
+                audio = mutagen.File(str(path))
             if audio is not None:
                 if getattr(audio, "info", None) is not None:
                     length = getattr(audio.info, "length", None)
@@ -173,11 +248,14 @@ class MediaScanner:
                     bitrate = getattr(audio.info, "bitrate", None)
                     if bitrate:
                         info["bitrate"] = int(bitrate)
-                if audio.tags:
+                if getattr(audio, "tags", None):
                     for key in ("title", "artist", "album", "genre", "date"):
-                        val = audio.tags.get(key)
-                        if val:
-                            info[key] = val[0] if isinstance(val, list) else str(val)
+                        try:
+                            val = audio.tags.get(key)
+                            if val:
+                                info[key] = val[0] if isinstance(val, list) else str(val)
+                        except Exception:
+                            pass
         except Exception:
             pass
 

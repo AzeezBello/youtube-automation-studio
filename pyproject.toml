@@ -47,6 +47,7 @@ ai = [
 
 [project.scripts]
 youtube-studio = "youtube_studio.main:main"
+youtube-studio-mcp = "youtube_studio.mcp.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

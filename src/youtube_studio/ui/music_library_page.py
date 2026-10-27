@@ -7,6 +7,7 @@ from typing import Optional
 
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QHeaderView,
@@ -56,7 +57,7 @@ class MusicLibraryPage(QWidget):
         self.folder_input = QLineEdit()
         self.folder_input.setPlaceholderText("Select or enter a music folder path to scan…")
         self.folder_input.setToolTip(
-            "Path to a local directory containing WAV, MP3, FLAC, M4A, AAC, or OGG files."
+            "Path to a local directory containing WAV, MP3, FLAC, M4A, AAC, OGG, AIFF, or OPUS audio files."
         )
         toolbar.addWidget(self.folder_input, stretch=2)
 
@@ -99,7 +100,7 @@ class MusicLibraryPage(QWidget):
                 "to populate the library."
             ),
             tips=[
-                "<b>Supported Formats:</b> WAV, MP3, FLAC, M4A, AAC, and OGG are indexed recursively.",
+                "<b>Supported Audio Formats:</b> WAV, MP3, FLAC, M4A, AAC, OGG, AIFF, OPUS, WMA, and ALAC audio files (video formats like MP4/MOV are excluded).",
                 "<b>Harmonic & Tempo Analysis:</b> Every track is automatically analyzed for BPM, Camelot key (1A–12B), and intro/outro silence cues.",
                 "<b>Duplicate Protection:</b> SHA-256 content hashing flags duplicate audio files across folders.",
             ],
@@ -141,7 +142,7 @@ class MusicLibraryPage(QWidget):
         if not raw_path:
             QMessageBox.warning(self, "Scan Folder", "Please select or enter a folder path first.")
             return
-        folder = Path(raw_path).expanduser()
+        folder = self._scanner.resolve_directory(Path(raw_path))
         if not folder.exists() or not folder.is_dir():
             QMessageBox.warning(self, "Scan Folder", f"Directory does not exist:\n{folder}")
             return
@@ -149,15 +150,25 @@ class MusicLibraryPage(QWidget):
         try:
             with session_scope() as session:
                 media_svc = MediaLibraryService(session)
-                summary = self._scanner.scan_directory(folder, media_service=media_svc)
+                summary = self._scanner.scan_directory(
+                    folder,
+                    media_service=media_svc,
+                    audio_only=True,
+                )
             self.refresh()
-            QMessageBox.information(
-                self,
-                "Scan Complete",
-                f"Scanned {len(summary.scanned_files)} audio file(s).\n"
-                f"Duplicate groups detected: {len(summary.duplicates_by_hash)}\n"
+            msg_lines = [
+                f"Scanned {len(summary.scanned_files)} audio file(s) in:\n{folder}",
+                f"Duplicate groups detected: {len(summary.duplicates_by_hash)}",
                 f"Errors: {len(summary.errors)}",
-            )
+            ]
+            if summary.errors:
+                first_err = next(iter(summary.errors.items()))
+                msg_lines.append(f"\nFirst error:\n{first_err[0]}: {first_err[1]}")
+            if not summary.scanned_files and summary.skipped_extensions:
+                ext_list = ", ".join(f"{k} ({v})" for k, v in sorted(summary.skipped_extensions.items()))
+                msg_lines.append(f"\nOther file types found in folder: {ext_list}")
+
+            QMessageBox.information(self, "Scan Complete", "\n".join(msg_lines))
         except Exception as exc:
             QMessageBox.critical(self, "Scan Failed", str(exc))
 
