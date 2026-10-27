@@ -1,0 +1,376 @@
+"""Step-by-step first-run Onboarding Flow wizard for YouTube Automation Studio."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Callable, Optional
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QFont
+from PySide6.QtWidgets import (
+    QCheckBox,
+    QComboBox,
+    QDialog,
+    QFormLayout,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+)
+
+from youtube_studio.config import HardwareProbe, get_settings
+from youtube_studio.domain.models.channel import ChannelBrandConfig
+from youtube_studio.domain.services import ChannelService
+from youtube_studio.media.thumbnail import PALETTES
+from youtube_studio.security.vault import CredentialVault
+from youtube_studio.storage import session_scope
+
+
+class OnboardingDialog(QDialog):
+    """Multi-step onboarding flow introducing the app and guiding initial setup."""
+
+    TOTAL_STEPS = 4
+
+    def __init__(
+        self,
+        parent: Optional[QWidget] = None,
+        *,
+        on_start_tour: Optional[Callable[[], None]] = None,
+        on_completed: Optional[Callable[[], None]] = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Welcome — YouTube Automation Studio Setup")
+        self.resize(680, 480)
+        self._on_start_tour = on_start_tour
+        self._on_completed = on_completed
+        self._vault = CredentialVault()
+        self._build_ui()
+        self._update_step_ui()
+
+    @staticmethod
+    def state_file_path() -> Path:
+        return get_settings().resolved_data_dir() / "onboarding_state.json"
+
+    @classmethod
+    def is_onboarding_completed(cls) -> bool:
+        path = cls.state_file_path()
+        if not path.exists():
+            return False
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return bool(data.get("completed", False))
+        except Exception:
+            return False
+
+    @classmethod
+    def mark_onboarding_completed(cls, completed: bool = True) -> None:
+        path = cls.state_file_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"completed": completed}, indent=2), encoding="utf-8")
+
+    def _build_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(24, 20, 24, 20)
+        root.setSpacing(14)
+
+        # Step indicator header
+        top_row = QHBoxLayout()
+        self.step_badge = QLabel("Step 1 of 4")
+        self.step_badge.setStyleSheet(
+            "background-color: #312e81; color: #c7d2fe; padding: 4px 10px; "
+            "border-radius: 12px; font-weight: bold;"
+        )
+        top_row.addWidget(self.step_badge)
+        top_row.addStretch()
+
+        self.skip_btn = QPushButton("Skip Intro")
+        self.skip_btn.setToolTip("Skip the onboarding wizard and go directly to the studio.")
+        self.skip_btn.clicked.connect(self._on_finish)
+        top_row.addWidget(self.skip_btn)
+        root.addLayout(top_row)
+
+        # Stacked steps
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self._build_step_welcome())
+        self.stack.addWidget(self._build_step_channel())
+        self.stack.addWidget(self._build_step_hardware_and_api())
+        self.stack.addWidget(self._build_step_ready())
+        root.addWidget(self.stack, stretch=1)
+
+        # Bottom navigation bar
+        nav_row = QHBoxLayout()
+        self.prev_btn = QPushButton("← Back")
+        self.prev_btn.setToolTip("Return to the previous onboarding step.")
+        self.prev_btn.clicked.connect(self._on_prev)
+        nav_row.addWidget(self.prev_btn)
+
+        nav_row.addStretch()
+
+        self.next_btn = QPushButton("Next Step →")
+        self.next_btn.setObjectName("PrimaryButton")
+        self.next_btn.setToolTip("Proceed to the next onboarding step.")
+        self.next_btn.clicked.connect(self._on_next)
+        nav_row.addWidget(self.next_btn)
+
+        root.addLayout(nav_row)
+
+    def _build_step_welcome(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(10)
+
+        title = QLabel("Welcome to YouTube Automation Studio")
+        title.setFont(QFont("", 20, QFont.Weight.Bold))
+        layout.addWidget(title)
+
+        sub = QLabel(
+            "Your self-contained, local-first desktop studio for multi-channel YouTube research, "
+            "harmonic audio mixing, reactive video production, and AI metadata packaging."
+        )
+        sub.setWordWrap(True)
+        sub.setStyleSheet("color: #cbd5e1; font-size: 14px;")
+        layout.addWidget(sub)
+
+        group = QGroupBox("How the 5-Stage Creator Pipeline Works")
+        g_layout = QVBoxLayout(group)
+        steps_html = (
+            "<ol style='line-height: 1.55; color: #e2e8f0;'>"
+            "<li><b>Research Workspace:</b> Discover high-demand topics, cluster keywords locally, "
+            "and hand off saved ideas into production projects.</li>"
+            "<li><b>Music Library:</b> Scan your local audio folders (WAV, MP3, FLAC, M4A, AAC, OGG) "
+            "with automatic BPM, Camelot key, waveform, and duplicate detection.</li>"
+            "<li><b>Production Studio:</b> Sequence tracks with smart harmonic ordering, auto-silence "
+            "cue trimming, bass-swap EQ crossfades, audio visualizers, and 9:16 Short highlights.</li>"
+            "<li><b>Artwork & Local AI:</b> Generate 16:9 & 9:16 thumbnails and SEO titles/chapters/tags "
+            "using local models or zero-dependency procedural templates.</li>"
+            "<li><b>100% Manual Publishing Control:</b> Audit your export manifest through the Compliance "
+            "Review Gate and upload on your own schedule.</li>"
+            "</ol>"
+        )
+        lbl = QLabel(steps_html)
+        lbl.setWordWrap(True)
+        lbl.setTextFormat(Qt.TextFormat.RichText)
+        g_layout.addWidget(lbl)
+        layout.addWidget(group)
+        layout.addStretch()
+        return page
+
+    def _build_step_channel(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(10)
+
+        title = QLabel("Create Your First Channel Profile")
+        title.setFont(QFont("", 18, QFont.Weight.Bold))
+        layout.addWidget(title)
+
+        sub = QLabel(
+            "Each channel profile stores its own visual palette, default resolution, and tag templates "
+            "so you can manage multiple brands from one studio."
+        )
+        sub.setWordWrap(True)
+        sub.setStyleSheet("color: #cbd5e1;")
+        layout.addWidget(sub)
+
+        form_group = QGroupBox("Channel Brand Profile")
+        form = QFormLayout(form_group)
+
+        self.channel_name_input = QLineEdit()
+        self.channel_name_input.setPlaceholderText("e.g. Deep Dub Collective or Lo-Fi Study Beats")
+        self.channel_name_input.setToolTip("Enter a display name for your YouTube channel profile.")
+        form.addRow("Channel Name:", self.channel_name_input)
+
+        self.channel_palette_combo = QComboBox()
+        self.channel_palette_combo.addItems(list(PALETTES.keys()))
+        self.channel_palette_combo.setToolTip(
+            "Select the default color palette used when rendering thumbnails and background artwork."
+        )
+        form.addRow("Default Artwork Palette:", self.channel_palette_combo)
+
+        self.channel_tags_input = QLineEdit()
+        self.channel_tags_input.setPlaceholderText("e.g. deep dubstep, 140 bpm, bass mix, full session")
+        self.channel_tags_input.setToolTip(
+            "Comma-separated tags automatically included in new metadata drafts for this channel."
+        )
+        form.addRow("Default Genre Tags:", self.channel_tags_input)
+
+        self.create_channel_btn = QPushButton("+ Save Channel Profile")
+        self.create_channel_btn.setObjectName("AccentButton")
+        self.create_channel_btn.setToolTip("Create and save this channel profile to the local SQLite database.")
+        self.create_channel_btn.clicked.connect(self._on_create_channel_clicked)
+        form.addRow(self.create_channel_btn)
+
+        self.channel_status_lbl = QLabel("")
+        self.channel_status_lbl.setStyleSheet("color: #34d399;")
+        form.addRow(self.channel_status_lbl)
+
+        layout.addWidget(form_group)
+        layout.addStretch()
+        return page
+
+    def _build_step_hardware_and_api(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(10)
+
+        title = QLabel("System Hardware & Optional API Key")
+        title.setFont(QFont("", 18, QFont.Weight.Bold))
+        layout.addWidget(title)
+
+        hw_group = QGroupBox("Detected Local Hardware Profile")
+        hw_layout = QVBoxLayout(hw_group)
+        try:
+            hw = HardwareProbe(get_settings().resolved_data_dir()).run()
+            hw_text = (
+                f"<b>OS / Arch:</b> {hw.os_name} ({hw.architecture})<br>"
+                f"<b>CPU & Memory:</b> {hw.cpu_count} cores · {hw.total_ram_gb:.1f} GB RAM · "
+                f"{hw.free_disk_gb:.1f} GB free disk<br>"
+                f"<b>FFmpeg HW Acceleration:</b> {'Available' if hw.has_ffmpeg_hwaccel else 'Software / PCM Fallback'}<br>"
+                f"<b>Recommended Profile:</b> <span style='color:#818cf8'>{hw.recommended_profile.value}</span>"
+            )
+        except Exception as exc:
+            hw_text = f"Hardware probe summary: {exc}"
+        hw_lbl = QLabel(hw_text)
+        hw_lbl.setWordWrap(True)
+        hw_layout.addWidget(hw_lbl)
+        layout.addWidget(hw_group)
+
+        api_group = QGroupBox("Optional: YouTube Data API v3 Key (For Live Research)")
+        api_layout = QVBoxLayout(api_group)
+        api_desc = QLabel(
+            "You can use the offline research provider right away, or store a YouTube Data API v3 key "
+            "in the secure Credential Vault for live public metadata search."
+        )
+        api_desc.setWordWrap(True)
+        api_desc.setStyleSheet("color: #94a3b8;")
+        api_layout.addWidget(api_desc)
+
+        api_row = QHBoxLayout()
+        self.api_key_input = QLineEdit()
+        self.api_key_input.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_key_input.setPlaceholderText("Paste YouTube Data API v3 key (optional)…")
+        self.api_key_input.setToolTip("Stored securely in your OS Keychain / Credential Vault.")
+        api_row.addWidget(self.api_key_input, stretch=1)
+
+        save_key_btn = QPushButton("Save Key")
+        save_key_btn.setToolTip("Save the API key into the encrypted Credential Vault.")
+        save_key_btn.clicked.connect(self._on_save_api_key)
+        api_row.addWidget(save_key_btn)
+        api_layout.addLayout(api_row)
+
+        self.api_status_lbl = QLabel("")
+        self.api_status_lbl.setStyleSheet("color: #34d399;")
+        api_layout.addWidget(self.api_status_lbl)
+
+        layout.addWidget(api_group)
+        layout.addStretch()
+        return page
+
+    def _build_step_ready(self) -> QWidget:
+        page = QWidget()
+        layout = QVBoxLayout(page)
+        layout.setSpacing(12)
+
+        title = QLabel("You're Ready to Create!")
+        title.setFont(QFont("", 20, QFont.Weight.Bold))
+        layout.addWidget(title)
+
+        desc = QLabel(
+            "Your local database and workspace directories are initialized. "
+            "Would you like to take a quick interactive Product Tour of the 6 studio workspaces?"
+        )
+        desc.setWordWrap(True)
+        desc.setStyleSheet("color: #cbd5e1; font-size: 14px;")
+        layout.addWidget(desc)
+
+        tour_box = QGroupBox("Guided Product Tour & Next Steps")
+        t_layout = QVBoxLayout(tour_box)
+
+        self.chk_launch_tour = QCheckBox("Start the interactive 6-step Guided Product Tour now (Recommended)")
+        self.chk_launch_tour.setChecked(True)
+        self.chk_launch_tour.setToolTip(
+            "Walks you through Dashboard, Research, Music Library, Production, Artwork, and Settings."
+        )
+        t_layout.addWidget(self.chk_launch_tour)
+
+        tips = QLabel(
+            "• Hover over any button, dropdown, or setting to see helpful <b>Tooltips</b>.<br>"
+            "• Blank tables automatically show an <b>Empty State Guide</b> with tips and quick actions.<br>"
+            "• You can re-open this Onboarding Flow or the Product Tour anytime from the top bar or <b>Help</b> menu."
+        )
+        tips.setWordWrap(True)
+        tips.setStyleSheet("color: #94a3b8; margin-top: 6px;")
+        t_layout.addWidget(tips)
+
+        layout.addWidget(tour_box)
+        layout.addStretch()
+        return page
+
+    def _on_create_channel_clicked(self) -> None:
+        name = self.channel_name_input.text().strip()
+        if not name:
+            QMessageBox.warning(self, "Channel Name Required", "Please enter a channel name first.")
+            return
+        palette = self.channel_palette_combo.currentText()
+        tags = [t.strip() for t in self.channel_tags_input.text().split(",") if t.strip()]
+        brand = ChannelBrandConfig(
+            visual_style=palette,
+            default_tags=tags or ["music mix", "full session"],
+            thumbnail_style={"palette": palette, "motif": "vinyl_and_sound_system"},
+        )
+        try:
+            with session_scope() as session:
+                ch = ChannelService(session).create(name, brand_config=brand)
+            self.channel_status_lbl.setText(f"✓ Created channel '{ch.name}' ({palette})")
+            self.channel_name_input.clear()
+        except Exception as exc:
+            QMessageBox.critical(self, "Could Not Create Channel", str(exc))
+
+    def _on_save_api_key(self) -> None:
+        key = self.api_key_input.text().strip()
+        if not key:
+            return
+        self._vault.set_secret("youtube_data_api_key", key)
+        self.api_key_input.clear()
+        self.api_status_lbl.setText("✓ API key saved to Credential Vault.")
+
+    def _on_prev(self) -> None:
+        idx = self.stack.currentIndex()
+        if idx > 0:
+            self.stack.setCurrentIndex(idx - 1)
+            self._update_step_ui()
+
+    def _on_next(self) -> None:
+        idx = self.stack.currentIndex()
+        if idx == 1 and self.channel_name_input.text().strip():
+            # Auto-save channel if user typed a name and clicked Next directly
+            self._on_create_channel_clicked()
+        if idx < self.TOTAL_STEPS - 1:
+            self.stack.setCurrentIndex(idx + 1)
+            self._update_step_ui()
+        else:
+            self._on_finish()
+
+    def _on_finish(self) -> None:
+        self.mark_onboarding_completed(True)
+        launch_tour = self.chk_launch_tour.isChecked()
+        if self._on_completed:
+            self._on_completed()
+        self.accept()
+        if launch_tour and self._on_start_tour:
+            self._on_start_tour()
+
+    def _update_step_ui(self) -> None:
+        idx = self.stack.currentIndex()
+        self.step_badge.setText(f"Step {idx + 1} of {self.TOTAL_STEPS}")
+        self.prev_btn.setEnabled(idx > 0)
+        if idx == self.TOTAL_STEPS - 1:
+            self.next_btn.setText("Finish & Open Studio ✓")
+        else:
+            self.next_btn.setText("Next Step →")

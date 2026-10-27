@@ -186,6 +186,50 @@ class TestBackupAndCompliance(unittest.TestCase):
             )
             self.assertFalse(ok)
 
+    def test_main_window_all_six_pages_instantiate(self) -> None:
+        import os
+
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtWidgets import QApplication
+        from youtube_studio.ui import MainWindow
+
+        _app = QApplication.instance() or QApplication([])
+        win = MainWindow()
+        self.assertEqual(win.nav.count(), 6)
+
+        # Verify tooltips on header buttons and navigation items
+        self.assertTrue(len(win.btn_onboarding.toolTip()) > 10)
+        self.assertTrue(len(win.btn_tour.toolTip()) > 10)
+        for idx in range(win.nav.count()):
+            self.assertTrue(len(win.nav.item(idx).toolTip()) > 10)
+            win.nav.setCurrentRow(idx)
+            self.assertEqual(win.stack.currentIndex(), idx)
+
+        # Verify EmptyStateWidget exists on pages
+        for key in ("dashboard", "research", "music_library", "production", "artwork"):
+            page = win.pages[key]
+            self.assertTrue(hasattr(page, "empty_state"), f"Missing empty_state on {key}")
+        self.assertTrue(hasattr(win.pages["settings"], "backup_empty_state"))
+
+        # Verify Product Tour steps through all 6 workspaces
+        win.start_product_tour()
+        self.assertEqual(win.tour_banner.current_step, 0)
+        self.assertEqual(win.stack.currentIndex(), 0)
+        for expected_step in range(1, 6):
+            win.tour_banner.next_step()
+            self.assertEqual(win.tour_banner.current_step, expected_step)
+            self.assertEqual(win.stack.currentIndex(), expected_step)
+        win.tour_banner.stop_tour()
+
+        # Verify OnboardingDialog 4-step wizard
+        dlg = win.open_onboarding_dialog()
+        self.assertEqual(dlg.stack.count(), 4)
+        self.assertEqual(dlg.stack.currentIndex(), 0)
+        dlg._on_next()
+        self.assertEqual(dlg.stack.currentIndex(), 1)
+        dlg._on_prev()
+        self.assertEqual(dlg.stack.currentIndex(), 0)
+
 
 if __name__ == "__main__":
     unittest.main()

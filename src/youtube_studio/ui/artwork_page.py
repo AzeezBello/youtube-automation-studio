@@ -41,10 +41,11 @@ from youtube_studio.domain.services import (
 )
 from youtube_studio.media.thumbnail import PALETTES
 from youtube_studio.storage import session_scope
+from youtube_studio.ui.components import EmptyStateWidget
 
 
 class ArtworkPage(QWidget):
-    """Interactive P3 workspace for local AI model registry, metadata generation, and thumbnail/artwork creation."""
+    """Interactive workspace for local AI model registry, metadata generation, and thumbnail/artwork creation."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -58,6 +59,8 @@ class ArtworkPage(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(10)
 
         heading = QLabel("Artwork, Thumbnails & Local AI Studio")
         heading.setFont(QFont("", 18, QFont.Weight.Bold))
@@ -68,29 +71,59 @@ class ArtworkPage(QWidget):
             f"Hardware: {self._hw_report.cpu_count} CPU cores · {self._hw_report.total_ram_gb} GB RAM · "
             f"Recommended profile: {self._hw_report.recommended_profile.value}"
         )
-        hw_label.setStyleSheet("color: #aaa;")
+        hw_label.setStyleSheet("color: #94a3b8;")
+        hw_label.setToolTip("Detected local hardware specifications used to validate local AI model compatibility.")
         root.addWidget(hw_label)
 
         top_row = QHBoxLayout()
         top_row.addWidget(QLabel("Channel:"))
         self.channel_combo = QComboBox()
+        self.channel_combo.setToolTip("Select the channel profile whose brand style and projects you want to edit.")
         self.channel_combo.currentIndexChanged.connect(self._on_channel_changed)
         top_row.addWidget(self.channel_combo, stretch=1)
 
         top_row.addWidget(QLabel("Project:"))
         self.project_combo = QComboBox()
+        self.project_combo.setToolTip("Select the production project for metadata and thumbnail generation.")
         self.project_combo.currentIndexChanged.connect(self._on_project_changed)
         top_row.addWidget(self.project_combo, stretch=1)
 
         top_row.addWidget(QLabel("Local LM:"))
         self.model_combo = QComboBox()
+        self.model_combo.setToolTip(
+            "Select a registered local GGUF language model or use the built-in Template Fallback."
+        )
         top_row.addWidget(self.model_combo, stretch=1)
 
         reg_model_btn = QPushButton("+ Register Local Model…")
+        reg_model_btn.setToolTip(
+            "Register a local .gguf, .safetensors, or .onnx model weight file and verify RAM compatibility."
+        )
         reg_model_btn.clicked.connect(self._on_register_model)
         top_row.addWidget(reg_model_btn)
 
         root.addLayout(top_row)
+
+        # Empty State Guide (visible when the selected project has no generated assets yet)
+        self.empty_state = EmptyStateWidget(
+            title="No Project Thumbnails or Artwork Generated Yet",
+            description=(
+                "Select a channel and project above, then generate SEO metadata drafts (titles, chapters, tags) "
+                "and 16:9 or 9:16 thumbnails—with zero cloud subscription required."
+            ),
+            tips=[
+                "<b>Zero-Dependency Fallback:</b> Even without a local LLM or diffusion GPU, the built-in template and procedural engines generate ready-to-use titles and vinyl/gradient artwork.",
+                "<b>Chapter Timestamps Included:</b> Descriptions automatically include 00:00 formatted tracklist chapters from your Production timeline.",
+                "<b>16:9 & 9:16 Aspect Ratios:</b> Render standard 1280x720 YouTube thumbnails or 1080x1920 vertical covers.",
+            ],
+            action_label="Generate SEO Metadata",
+            action_tooltip="Generate 3 title candidates, chapter description, and tags for the current project.",
+            on_action=self._on_generate_metadata,
+            secondary_label="Generate Thumbnail & Artwork",
+            secondary_tooltip="Render a 16:9 or 9:16 thumbnail image for the current project.",
+            on_secondary=self._on_generate_artwork,
+        )
+        root.addWidget(self.empty_state)
 
         # Split body: Left = Metadata Studio, Right = Artwork & Thumbnail Studio
         body = QHBoxLayout()
@@ -100,31 +133,39 @@ class ArtworkPage(QWidget):
         meta_layout = QVBoxLayout(meta_group)
 
         gen_meta_btn = QPushButton("Generate Metadata (Local LM / Template Fallback)")
-        gen_meta_btn.setStyleSheet("font-weight: bold; padding: 6px;")
+        gen_meta_btn.setObjectName("PrimaryButton")
+        gen_meta_btn.setToolTip(
+            "Generate 3 YouTube title candidates (≤100 chars), timestamped description, and tags (≤500 chars)."
+        )
         gen_meta_btn.clicked.connect(self._on_generate_metadata)
         meta_layout.addWidget(gen_meta_btn)
 
         meta_form = QFormLayout()
         self.candidates_combo = QComboBox()
+        self.candidates_combo.setToolTip("Pick from the generated title candidates to populate the Selected Title field.")
         self.candidates_combo.currentTextChanged.connect(
             lambda text: self.title_input.setText(text) if text else None
         )
         meta_form.addRow("Title Candidates:", self.candidates_combo)
 
         self.title_input = QLineEdit()
+        self.title_input.setToolTip("Final YouTube video title (enforced ≤ 100 characters).")
         meta_form.addRow("Selected Title:", self.title_input)
 
         self.tags_input = QLineEdit()
         self.tags_input.setPlaceholderText("comma, separated, tags")
+        self.tags_input.setToolTip("Comma-separated YouTube tags (total budget ≤ 500 characters).")
         meta_form.addRow("Tags (≤500 chars):", self.tags_input)
 
         meta_layout.addLayout(meta_form)
 
         meta_layout.addWidget(QLabel("Description (with Chapters):"))
         self.desc_edit = QPlainTextEdit()
+        self.desc_edit.setToolTip("Full YouTube video description including 00:00 tracklist chapters and hashtags.")
         meta_layout.addWidget(self.desc_edit, stretch=1)
 
         save_meta_btn = QPushButton("Save New Metadata Draft Version")
+        save_meta_btn.setToolTip("Save an immutable versioned MetadataDraft record for this project.")
         save_meta_btn.clicked.connect(self._on_save_metadata_draft)
         meta_layout.addWidget(save_meta_btn)
 
@@ -137,24 +178,30 @@ class ArtworkPage(QWidget):
         art_form = QFormLayout()
         self.prompt_input = QLineEdit()
         self.prompt_input.setPlaceholderText("Enter thumbnail title or visual prompt…")
+        self.prompt_input.setToolTip("Headline text or visual prompt rendered on the thumbnail artwork.")
         art_form.addRow("Title / Prompt:", self.prompt_input)
 
         self.palette_combo = QComboBox()
         self.palette_combo.addItems(list(PALETTES.keys()))
+        self.palette_combo.setToolTip("Select the color gradient and typography palette for the thumbnail.")
         art_form.addRow("Brand Palette:", self.palette_combo)
 
         self.aspect_combo = QComboBox()
         self.aspect_combo.addItems(["16:9 (1280x720)", "9:16 (1080x1920)"])
+        self.aspect_combo.setToolTip("Choose 16:9 for standard YouTube videos or 9:16 for YouTube Shorts.")
         art_form.addRow("Aspect Ratio:", self.aspect_combo)
 
         art_layout.addLayout(art_form)
 
         gen_art_btn = QPushButton("Generate Thumbnail & Artwork")
-        gen_art_btn.setStyleSheet("font-weight: bold; padding: 6px;")
+        gen_art_btn.setObjectName("AccentButton")
+        gen_art_btn.setToolTip("Render and register a new PNG thumbnail asset for the selected project.")
         gen_art_btn.clicked.connect(self._on_generate_artwork)
         art_layout.addWidget(gen_art_btn)
 
         self.assets_table = QTableWidget(0, 4)
+        self.assets_table.setAlternatingRowColors(True)
+        self.assets_table.setToolTip("Generated visual and media assets registered to this project.")
         self.assets_table.setHorizontalHeaderLabels(["Type", "Approved", "Adapter", "File Path"])
         self.assets_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.Stretch)
         self.assets_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -162,6 +209,7 @@ class ArtworkPage(QWidget):
         art_layout.addWidget(self.assets_table, stretch=1)
 
         approve_btn = QPushButton("Approve Selected Asset for Publishing")
+        approve_btn.setToolTip("Mark the selected thumbnail/artwork asset as approved for the release package.")
         approve_btn.clicked.connect(self._on_approve_asset)
         art_layout.addWidget(approve_btn)
 
@@ -240,6 +288,8 @@ class ArtworkPage(QWidget):
         self.assets_table.setRowCount(0)
         self._asset_ids = []
         if not project_id:
+            if hasattr(self, "empty_state"):
+                self.empty_state.setVisible(True)
             return
 
         with session_scope() as session:
@@ -247,6 +297,9 @@ class ArtworkPage(QWidget):
             project = proj_svc.get_project(project_id)
             draft = proj_svc.get_latest_metadata_draft(project_id)
             assets = proj_svc.list_assets(project_id)
+
+        if hasattr(self, "empty_state"):
+            self.empty_state.setVisible(len(assets) == 0)
 
         if project and not self.prompt_input.text().strip():
             self.prompt_input.setText(project.name)

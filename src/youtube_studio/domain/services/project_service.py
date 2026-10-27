@@ -255,7 +255,7 @@ class ProjectService:
         return updated
 
     def auto_harmonic_sort(self, project_id: str) -> list[ProjectTrack]:
-        """Reorder project tracks using VirtualDJ-style Camelot key + BPM progression."""
+        """Reorder project tracks using Camelot wheel harmonic key + BPM progression."""
         from youtube_studio.media.dj_intelligence import DJIntelligenceService
 
         tracks = self.list_tracks(project_id)

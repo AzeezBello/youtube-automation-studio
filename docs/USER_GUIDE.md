@@ -32,30 +32,30 @@ Profiles (`YTS_RESOURCE_PROFILE`):
 
 ---
 
-## 2. Music Library & VirtualDJ Intelligence
+## 2. Music Library & Harmonic Audio Intelligence
 
 Navigate to **Music Library** to index your local audio (`WAV`, `MP3`, `FLAC`, `OGG`, `M4A`, `AAC`) and visual assets:
 1. Click **Scan Folder…** to recursively index audio files, durations, sample rates, bitrates, and waveforms.
-2. **DJ Intelligence (`DJIntelligenceService`)**:
+2. **Audio Intelligence (`DJIntelligenceService`)**:
    - **Auto-BPM & Camelot Key Detection**: Estimates tempo (BPM) and musical key (`1A`–`12B` Camelot wheel).
    - **Harmonic Tracklist Ordering**: Automatically sequences your mix so adjacent tracks share identical or neighbor Camelot keys (`±1` step or relative A/B) and minimal BPM jumps.
-   - **Smart Silence Trim & Energy Drop Marker**: Finds leading/trailing dead air (`<-48 dBFS`) for tight DJ cue points and locates the peak energy window for Shorts clipping.
+   - **Smart Silence Trim & Energy Drop Marker**: Finds leading/trailing dead air (`<-48 dBFS`) for tight cue points and locates the peak energy window for Shorts clipping.
 
 ---
 
-## 3. Production Studio & CapCut Visual FX
+## 3. Production Studio & Visual FX
 
 Navigate to **Production** to assemble single-track videos or multi-track DJ mixes:
 1. **Audio Transitions**:
    - `NONE`: Hard cut or gap.
    - `CROSSFADE`: Smooth overlapping volume crossfade.
-   - `BASS_SWAP_EQ`: VirtualDJ-style 250 Hz low-shelf cut on the outgoing track during the overlap to eliminate muddy double-bass clashes, paired with `-14 LUFS` EBU R128 loudness normalization.
+   - `BASS_SWAP_EQ`: 250 Hz low-shelf cut on the outgoing track during the overlap to eliminate muddy double-bass clashes, paired with `-14 LUFS` EBU R128 loudness normalization.
 2. **Audio-Reactive Visualizers (`VisualizerStyle`)**:
    - `LINE_WAVE`: Classic sinusoidal waveform overlay.
-   - `BAR_SPECTRUM`: CapCut-style multi-band frequency bars (`showspectrum`).
+   - `BAR_SPECTRUM`: Multi-band frequency bars (`showspectrum`).
    - `MIRRORED_STEREO`: Symmetric dual-channel waveform (`split` + `vflip`).
    - `DUB_OSCILLOSCOPE`: Vectorscope / circular stereo phase meter (`avectorscope`).
-3. **CapCut Motion & Overlay FX (`VisualFXConfig`)**:
+3. **Motion & Overlay FX (`VisualFXConfig`)**:
    - **Spinning Vinyl Centerpiece**: Rotating vinyl record overlay (`33.3 RPM`).
    - **Now-Playing Track HUD**: Time-windowed `drawtext` lower-third displaying the active track title and artist.
    - **Bottom Progress Bar**: Animated progress bar sweeping from `0%` to `100%`.

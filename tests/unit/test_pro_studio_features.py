@@ -1,4 +1,4 @@
-"""Unit tests for VirtualDJ audio intelligence & CapCut video styling / Shorts clipper features."""
+"""Unit tests for harmonic audio intelligence, visualizers, motion FX & 9:16 Shorts clipper features."""
 
 from __future__ import annotations
 
@@ -110,7 +110,7 @@ def test_bass_swap_eq_crossfade_filtergraph():
         assert "acrossfade=d=1.000" in fg
 
 
-def test_capcut_visualizers_motion_fx_and_now_playing_overlay():
+def test_pro_studio_visualizers_motion_fx_and_now_playing_overlay():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         audio_path = _write_padded_wav(root / "mix.wav", silence_lead_sec=0.0, tone_sec=4.0, silence_tail_sec=0.0)
@@ -156,7 +156,7 @@ def test_capcut_visualizers_motion_fx_and_now_playing_overlay():
         assert "Now Playing: Scientist - Steppers Cut" in srt_text
 
 
-def test_capcut_auto_shorts_clipper_9x16():
+def test_pro_studio_auto_shorts_clipper_9x16():
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         source_wav = _write_padded_wav(

@@ -1,4 +1,4 @@
-"""Single-track and multi-track video renderer with CapCut-style visualizers, motion FX, and Now-Playing overlays."""
+"""Single-track and multi-track video renderer with audio-reactive visualizers, motion FX, and Now-Playing overlays."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""CapCut-style Auto-Shorts / Reels Clipper: extracts peak-energy 9:16 vertical highlight videos."""
+"""Auto-Shorts / Reels Clipper: extracts peak-energy 9:16 vertical highlight videos."""
 
 from __future__ import annotations
 

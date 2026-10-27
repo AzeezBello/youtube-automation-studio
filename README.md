@@ -33,7 +33,7 @@ A self-contained desktop platform that combines:
 - [x] Audio mixing + thumbnail layout + video rendering + output validation pipeline (P1)
 - [x] Research workspace UI, topic clustering, competitor watchlist, 30-day retention purge, and Saved Ideas → Production hand-off (P2)
 - [x] Local AI model registry, hardware compatibility check, LM/template metadata generation, and optional diffusion/procedural artwork generation (P3)
-- [x] VirtualDJ smart mixing (BPM/Camelot key detection, harmonic sort, auto-silence cue trim, bass-swap EQ crossfades) & CapCut video styling ("Now Playing" chapter overlays, multi-style visualizers, Ken Burns/vintage FX, and 9:16 Auto-Shorts clipper) (P4)
+- [x] Pro Studio smart mixing (BPM/Camelot key detection, harmonic sort, auto-silence cue trim, bass-swap EQ crossfades) & video styling ("Now Playing" chapter overlays, multi-style visualizers, slow-zoom/vintage FX, and 9:16 Auto-Shorts clipper) (P4)
 - [x] Unit & full end-to-end real-media integration test suite
 - [x] Packaging (`packaging/`), compliance review gate, atomic SQLite backup/restore & documentation (`docs/USER_GUIDE.md`, `docs/COMPLIANCE.md`) (P5)
 
@@ -117,7 +117,7 @@ See `docs/COMPLIANCE.md` (to be expanded) and the policy layer in `domain/polici
 | P1    | Music library → video pipeline             | Validated MP3 → video package                      |
 | P2    | Research workspace + retention             | Save / reopen research projects                    |
 | P3    | Local AI (text + optional image)           | Metadata + artwork without paid API                |
-| P4    | VirtualDJ & CapCut pro studio features     | Harmonic mixing, visualizers, FX & 9:16 Shorts     |
+| P4    | Pro studio mixing, visualizers & Shorts    | Harmonic mixing, visualizers, FX & 9:16 Shorts     |
 | P5    | Packaging, hardening, docs                 | Installable release + recovery procedures          |
 
 ## License

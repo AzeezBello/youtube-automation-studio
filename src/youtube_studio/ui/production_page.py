@@ -1,4 +1,4 @@
-"""Production UI page – VirtualDJ harmonic/cue tools, CapCut visual FX & Shorts clipper."""
+"""Production UI page – harmonic/cue tools, visual FX, audio visualizers & Shorts clipper."""
 
 from __future__ import annotations
 
@@ -36,10 +36,11 @@ from youtube_studio.jobs.runner import ProductionJobRunner
 from youtube_studio.media.renderer import VisualizerStyle
 from youtube_studio.media.shorts_clipper import ShortsClipperService
 from youtube_studio.storage import session_scope
+from youtube_studio.ui.components import EmptyStateWidget
 
 
 class ProductionPage(QWidget):
-    """Interactive production workspace with VirtualDJ smart mixing & CapCut video styling."""
+    """Interactive production workspace with harmonic smart mixing, reactive visualizers & video styling."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -51,65 +52,115 @@ class ProductionPage(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(10)
 
-        heading = QLabel("Production Workspace (VirtualDJ Mixing + CapCut Video Studio)")
+        heading = QLabel("Production Studio — Harmonic Mixing & Video Renderer")
         heading.setFont(QFont("", 18, QFont.Weight.Bold))
         root.addWidget(heading)
+
+        subtitle = QLabel(
+            "Arrange multi-track mixes, apply bass-swap EQ transitions, customize audio-reactive visualizers, "
+            "and export 16:9 releases or 9:16 vertical Shorts."
+        )
+        subtitle.setStyleSheet("color: #94a3b8;")
+        root.addWidget(subtitle)
 
         # Top bar: Channel & Project selectors
         selector_row = QHBoxLayout()
         selector_row.addWidget(QLabel("Channel:"))
         self.channel_combo = QComboBox()
+        self.channel_combo.setToolTip("Select the active YouTube channel profile for this production project.")
         self.channel_combo.currentIndexChanged.connect(self._on_channel_changed)
         selector_row.addWidget(self.channel_combo, stretch=1)
 
         new_channel_btn = QPushButton("+ Channel")
+        new_channel_btn.setToolTip("Create a new YouTube channel profile.")
         new_channel_btn.clicked.connect(self._on_new_channel)
         selector_row.addWidget(new_channel_btn)
 
         selector_row.addWidget(QLabel("Project:"))
         self.project_combo = QComboBox()
+        self.project_combo.setToolTip("Select the production project to edit and render.")
         self.project_combo.currentIndexChanged.connect(self._on_project_changed)
         selector_row.addWidget(self.project_combo, stretch=1)
 
         new_project_btn = QPushButton("+ Project")
+        new_project_btn.setObjectName("PrimaryButton")
+        new_project_btn.setToolTip("Create a new single-track, DJ mix, or album project under the selected channel.")
         new_project_btn.clicked.connect(self._on_new_project)
         selector_row.addWidget(new_project_btn)
 
         root.addLayout(selector_row)
 
-        # Main split: Left = Timeline tracks & VirtualDJ smart tools, Right = Track Editor + CapCut Visuals + Produce
+        # Empty State Guide (displayed when no tracks are in the current timeline)
+        self.empty_state = EmptyStateWidget(
+            title="No Tracks in Your Project Timeline Yet",
+            description=(
+                "Create or select a channel and project above, then add audio tracks from your Music Library "
+                "to build a single-track video or multi-track harmonic mix."
+            ),
+            tips=[
+                "<b>Smart Harmonic Sort:</b> Automatically orders tracks by Camelot Wheel compatibility (1A–12B) and gradual BPM progression.",
+                "<b>Auto-Cue Silence Trim:</b> Strips dead air at the start and end of every track for tight transitions.",
+                "<b>Bass-Swap EQ & Visualizers:</b> Eliminates low-end frequency clash during crossfades and renders multi-band spectrum visuals.",
+            ],
+            action_label="+ Create Project",
+            action_tooltip="Create a new production project for the selected channel.",
+            on_action=self._on_new_project,
+            secondary_label="+ Add Track to Timeline",
+            secondary_tooltip="Pick an indexed audio track from your Music Library and add it to the timeline.",
+            on_secondary=self._on_add_track,
+        )
+        root.addWidget(self.empty_state)
+
+        # Main split: Left = Timeline tracks & smart tools, Right = Track Editor + Visual FX + Produce
         body = QHBoxLayout()
 
         left_col = QVBoxLayout()
         track_btns = QHBoxLayout()
         add_track_btn = QPushButton("Add Track…")
+        add_track_btn.setObjectName("AccentButton")
+        add_track_btn.setToolTip("Add an indexed audio track from the Music Library into this project's timeline.")
         add_track_btn.clicked.connect(self._on_add_track)
         track_btns.addWidget(add_track_btn)
 
-        move_up_btn = QPushButton("Up")
+        move_up_btn = QPushButton("↑ Up")
+        move_up_btn.setToolTip("Move the selected track earlier in the timeline order.")
         move_up_btn.clicked.connect(lambda: self._on_move_track(-1))
         track_btns.addWidget(move_up_btn)
 
-        move_down_btn = QPushButton("Down")
+        move_down_btn = QPushButton("↓ Down")
+        move_down_btn.setToolTip("Move the selected track later in the timeline order.")
         move_down_btn.clicked.connect(lambda: self._on_move_track(1))
         track_btns.addWidget(move_down_btn)
 
         remove_track_btn = QPushButton("Remove")
+        remove_track_btn.setToolTip("Remove the selected track from this project timeline.")
         remove_track_btn.clicked.connect(self._on_remove_track)
         track_btns.addWidget(remove_track_btn)
 
         auto_cue_btn = QPushButton("Auto-Cue Silence Trim")
+        auto_cue_btn.setToolTip(
+            "Automatically detect and trim leading/trailing silence on all tracks in this project."
+        )
         auto_cue_btn.clicked.connect(self._on_auto_cue_trim)
         track_btns.addWidget(auto_cue_btn)
 
         harmonic_btn = QPushButton("Smart Harmonic Sort (BPM+Key)")
+        harmonic_btn.setToolTip(
+            "Reorder tracks for smooth Camelot Wheel harmonic compatibility and gradual tempo progression."
+        )
         harmonic_btn.clicked.connect(self._on_harmonic_sort)
         track_btns.addWidget(harmonic_btn)
 
         left_col.addLayout(track_btns)
 
         self.tracks_table = QTableWidget(0, 7)
+        self.tracks_table.setAlternatingRowColors(True)
+        self.tracks_table.setToolTip(
+            "Project timeline tracks. Select any row to edit its trim, gain, fade, and transition settings on the right."
+        )
         self.tracks_table.setHorizontalHeaderLabels(
             ["#", "Track", "BPM / Key", "Trim (ms)", "Gain (dB)", "Fade In/Out", "Transition"]
         )
@@ -121,35 +172,40 @@ class ProductionPage(QWidget):
 
         body.addLayout(left_col, stretch=3)
 
-        # Right column: Track Editor + CapCut Visual FX + Chapter Preview + Produce / Shorts buttons
+        # Right column: Track Editor + Visual FX + Chapter Preview + Produce / Shorts buttons
         right_col = QVBoxLayout()
-        editor_group = QGroupBox("Selected Track & VirtualDJ Transition Settings")
+        editor_group = QGroupBox("Selected Track & Harmonic Transition Settings")
         form = QFormLayout(editor_group)
 
         self.trim_start_spin = QSpinBox()
         self.trim_start_spin.setRange(0, 36_000_000)
         self.trim_start_spin.setSingleStep(500)
+        self.trim_start_spin.setToolTip("Start offset in milliseconds (trims intro before this point).")
         form.addRow("Trim Start (ms):", self.trim_start_spin)
 
         self.trim_end_spin = QSpinBox()
         self.trim_end_spin.setRange(0, 36_000_000)
         self.trim_end_spin.setSingleStep(500)
         self.trim_end_spin.setSpecialValueText("Full Length (0)")
+        self.trim_end_spin.setToolTip("End offset in milliseconds (0 = play until the end of the track).")
         form.addRow("Trim End (ms):", self.trim_end_spin)
 
         self.gain_spin = QDoubleSpinBox()
         self.gain_spin.setRange(-24.0, 24.0)
         self.gain_spin.setSingleStep(0.5)
+        self.gain_spin.setToolTip("Per-track volume adjustment in decibels (dB) before master loudness normalization.")
         form.addRow("Gain (dB):", self.gain_spin)
 
         self.fade_in_spin = QSpinBox()
         self.fade_in_spin.setRange(0, 60_000)
         self.fade_in_spin.setSingleStep(500)
+        self.fade_in_spin.setToolTip("Duration of audio fade-in at the start of the track (in milliseconds).")
         form.addRow("Fade In (ms):", self.fade_in_spin)
 
         self.fade_out_spin = QSpinBox()
         self.fade_out_spin.setRange(0, 60_000)
         self.fade_out_spin.setSingleStep(500)
+        self.fade_out_spin.setToolTip("Duration of audio fade-out at the end of the track (in milliseconds).")
         form.addRow("Fade Out (ms):", self.fade_out_spin)
 
         self.transition_type_combo = QComboBox()
@@ -160,40 +216,56 @@ class ProductionPage(QWidget):
                 TransitionType.NONE.value,
             ]
         )
+        self.transition_type_combo.setToolTip(
+            "Choose how this track transitions into the next: standard Crossfade, "
+            "Bass-Swap EQ (attenuates outgoing sub-bass below 250 Hz), or None."
+        )
         form.addRow("Transition Mode:", self.transition_type_combo)
 
         self.crossfade_spin = QSpinBox()
         self.crossfade_spin.setRange(0, 30_000)
         self.crossfade_spin.setSingleStep(500)
         self.crossfade_spin.setValue(3000)
+        self.crossfade_spin.setToolTip("Overlap duration in milliseconds between this track and the next track.")
         form.addRow("Overlap (ms):", self.crossfade_spin)
 
         apply_track_btn = QPushButton("Save Track Parameters")
+        apply_track_btn.setToolTip("Save trim, gain, fade, and transition settings for the selected timeline track.")
         apply_track_btn.clicked.connect(self._on_save_track_params)
         form.addRow(apply_track_btn)
 
         right_col.addWidget(editor_group)
 
-        # CapCut Visual FX Group
-        fx_group = QGroupBox("CapCut Video Styling & Visualizer FX")
+        # Video Styling & Visualizer FX Group
+        fx_group = QGroupBox("Video Styling, Overlays & Audio Visualizer FX")
         fx_layout = QFormLayout(fx_group)
 
         self.visualizer_combo = QComboBox()
         self.visualizer_combo.addItems([v.value for v in VisualizerStyle])
+        self.visualizer_combo.setToolTip(
+            "Select the audio-reactive visualizer rendered over the background artwork "
+            "(bar_spectrum, mirrored_stereo, dub_oscilloscope, line_wave, or none)."
+        )
         fx_layout.addRow("Audio Visualizer:", self.visualizer_combo)
 
         self.chk_now_playing = QCheckBox("Dynamic 'Now Playing' Track Title Overlay (Synced to Chapters)")
         self.chk_now_playing.setChecked(True)
+        self.chk_now_playing.setToolTip(
+            "Burns time-synced track titles into the video and exports a companion .srt subtitle file."
+        )
         fx_layout.addRow(self.chk_now_playing)
 
         self.chk_progress = QCheckBox("Animated Bottom Playback Progress Bar")
         self.chk_progress.setChecked(True)
+        self.chk_progress.setToolTip("Renders a smooth playback progress bar along the bottom edge of the video.")
         fx_layout.addRow(self.chk_progress)
 
-        self.chk_zoom = QCheckBox("Ken Burns Slow Zoom / Pan Motion")
+        self.chk_zoom = QCheckBox("Slow Cinema Zoom / Pan Motion")
+        self.chk_zoom.setToolTip("Applies subtle continuous camera zoom/pan so the background never looks static.")
         fx_layout.addRow(self.chk_zoom)
 
-        self.chk_vintage = QCheckBox("Vintage Film Grain & Warm Vignette")
+        self.chk_vintage = QCheckBox("Analog Film Grain & Warm Vignette")
+        self.chk_vintage.setToolTip("Adds organic film grain texture and subtle edge vignetting.")
         fx_layout.addRow(self.chk_vintage)
 
         right_col.addWidget(fx_group)
@@ -203,14 +275,25 @@ class ProductionPage(QWidget):
         chapters_layout = QVBoxLayout(chapters_group)
         self.chapters_preview = QPlainTextEdit()
         self.chapters_preview.setReadOnly(True)
+        self.chapters_preview.setToolTip(
+            "Auto-computed YouTube chapter timestamps (starting at 00:00) accounting for trims and crossfade overlaps."
+        )
         chapters_layout.addWidget(self.chapters_preview)
 
         self.produce_btn = QPushButton("Run Full Production Pipeline (Mix → Thumbnail → Video → Package)")
-        self.produce_btn.setStyleSheet("font-weight: bold; padding: 8px;")
+        self.produce_btn.setObjectName("PrimaryButton")
+        self.produce_btn.setToolTip(
+            "Execute all 6 checkpointed production stages: input validation, audio mixing, "
+            "thumbnail generation, video rendering, media verification, and export packaging."
+        )
         self.produce_btn.clicked.connect(self._on_run_production)
         chapters_layout.addWidget(self.produce_btn)
 
         self.shorts_btn = QPushButton("Export 9:16 Short / Reel Highlight (Peak 30s Auto-Clipper)")
+        self.shorts_btn.setObjectName("AccentButton")
+        self.shorts_btn.setToolTip(
+            "Automatically locate the highest-energy 30-second window and render a 1080x1920 vertical Short."
+        )
         self.shorts_btn.clicked.connect(self._on_export_short_highlight)
         chapters_layout.addWidget(self.shorts_btn)
 
@@ -279,6 +362,8 @@ class ProductionPage(QWidget):
         self._track_ids = []
         self.chapters_preview.setPlainText("")
         if not project_id:
+            if hasattr(self, "empty_state"):
+                self.empty_state.setVisible(True)
             return
 
         with session_scope() as session:
@@ -287,6 +372,9 @@ class ProductionPage(QWidget):
             tracks = proj_svc.list_tracks(project_id)
             chapters = proj_svc.compute_chapters(project_id)
             total_ms = proj_svc.compute_total_duration_ms(project_id)
+
+            if hasattr(self, "empty_state"):
+                self.empty_state.setVisible(len(tracks) == 0)
 
             self.tracks_table.setRowCount(len(tracks))
             for idx, pt in enumerate(tracks):

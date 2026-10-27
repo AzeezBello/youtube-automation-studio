@@ -43,14 +43,14 @@ Aligned with PRD §8.
 - [x] Optional local image generation
 - [x] Template fallbacks when models unavailable
 
-## P4 – VirtualDJ & CapCut Pro Studio Features (completed)
+## P4 – Pro Studio Harmonic Mixing & Visual FX (completed)
 
-- [x] VirtualDJ: Auto-silence trim & smart cue in/out detection + Bass-Swap EQ crossfades
-- [x] VirtualDJ: BPM & Musical Key (Camelot Wheel) detection + Smart harmonic track ordering
-- [x] CapCut: Dynamic "Now Playing" track title overlay (synced to chapters + `.srt` export) & progress bar
-- [x] CapCut: Subtle motion & vintage FX (Ken Burns slow zoom/pan, film grain, vignette, spinning vinyl)
-- [x] CapCut: Multi-style audio visualizers (Bar Spectrum, Mirrored Stereo, Dub Oscilloscope, Line Wave)
-- [x] CapCut: Auto-Shorts / Reels 9:16 highlight clipper (`1080x1920` peak-energy extractor)
+- [x] Audio Intelligence: Auto-silence trim & smart cue in/out detection + Bass-Swap EQ crossfades
+- [x] Harmonic Mixing: BPM & Musical Key (Camelot Wheel) detection + Smart harmonic track ordering
+- [x] Video Overlays: Dynamic "Now Playing" track title overlay (synced to chapters + `.srt` export) & progress bar
+- [x] Motion & Vintage FX: Subtle slow zoom/pan, film grain, vignette, spinning vinyl
+- [x] Audio Visualizers: Multi-style audio visualizers (Bar Spectrum, Mirrored Stereo, Dub Oscilloscope, Line Wave)
+- [x] Vertical Highlight Clipper: Auto-Shorts / Reels 9:16 highlight clipper (`1080x1920` peak-energy extractor)
 
 ## P5 – Packaging & Hardening (completed)
 

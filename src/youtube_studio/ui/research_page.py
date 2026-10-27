@@ -34,10 +34,11 @@ from youtube_studio.research import (
 )
 from youtube_studio.security import CredentialVault
 from youtube_studio.storage import session_scope
+from youtube_studio.ui.components import EmptyStateWidget
 
 
 class ResearchPage(QWidget):
-    """Interactive P2 research workspace with provenance tracking, clustering, watchlist, and production hand-off."""
+    """Interactive research workspace with provenance tracking, clustering, watchlist, and production hand-off."""
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
@@ -57,28 +58,44 @@ class ResearchPage(QWidget):
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
+        root.setContentsMargins(16, 16, 16, 16)
+        root.setSpacing(10)
 
-        heading = QLabel("Research Workspace")
+        heading = QLabel("Research Workspace — Topic Clustering & Idea Pipeline")
         heading.setFont(QFont("", 18, QFont.Weight.Bold))
         root.addWidget(heading)
+
+        subtitle = QLabel(
+            "Discover audience topics, group results with TF-IDF cosine clustering, monitor public watchlists, "
+            "and hand off saved ideas directly into production projects."
+        )
+        subtitle.setStyleSheet("color: #94a3b8;")
+        root.addWidget(subtitle)
 
         # Top selector row: Channel + Research Project + Retention Cleanup
         top_row = QHBoxLayout()
         top_row.addWidget(QLabel("Channel:"))
         self.channel_combo = QComboBox()
+        self.channel_combo.setToolTip("Select the active YouTube channel profile for research.")
         self.channel_combo.currentIndexChanged.connect(self._on_channel_changed)
         top_row.addWidget(self.channel_combo, stretch=1)
 
         top_row.addWidget(QLabel("Research Project:"))
         self.project_combo = QComboBox()
+        self.project_combo.setToolTip("Select a research project to store notes, watchlists, and saved ideas.")
         self.project_combo.currentIndexChanged.connect(self._on_project_changed)
         top_row.addWidget(self.project_combo, stretch=1)
 
         new_proj_btn = QPushButton("+ Research Project")
+        new_proj_btn.setObjectName("PrimaryButton")
+        new_proj_btn.setToolTip("Create a new research project container for the selected channel.")
         new_proj_btn.clicked.connect(self._on_new_research_project)
         top_row.addWidget(new_proj_btn)
 
         purge_btn = QPushButton("Purge Expired API Data (≤30d)")
+        purge_btn.setToolTip(
+            "Immediately remove any cached YouTube Data API v3 records older than 30 days."
+        )
         purge_btn.clicked.connect(self._on_purge_expired)
         top_row.addWidget(purge_btn)
 
@@ -92,23 +109,56 @@ class ResearchPage(QWidget):
         search_row = QHBoxLayout()
         self.provider_combo = QComboBox()
         self.provider_combo.addItems(["Stub Provider (Offline)", "YouTube Data API v3"])
+        self.provider_combo.setToolTip(
+            "Choose between the built-in Offline Stub Provider (uses 0 API quota) "
+            "or live YouTube Data API v3 search (requires API key in Settings)."
+        )
         search_row.addWidget(self.provider_combo)
 
         self.query_input = QLineEdit()
         self.query_input.setPlaceholderText("Enter keyword or topic query (e.g. roots reggae dub mix)…")
+        self.query_input.setToolTip("Enter a niche keyword, genre, or mood to search and cluster.")
         search_row.addWidget(self.query_input, stretch=1)
 
         search_btn = QPushButton("Search & Cluster")
+        search_btn.setObjectName("PrimaryButton")
+        search_btn.setToolTip("Fetch public video metadata and automatically group results into topic clusters.")
         search_btn.clicked.connect(self._on_search)
         search_row.addWidget(search_btn)
 
         left_col.addLayout(search_row)
 
         self.quota_label = QLabel()
-        self.quota_label.setStyleSheet("color: #aaa;")
+        self.quota_label.setStyleSheet("color: #94a3b8;")
+        self.quota_label.setToolTip("Tracks daily YouTube Data API v3 quota usage (10,000 unit daily budget).")
         left_col.addWidget(self.quota_label)
 
+        # Empty State Guide (visible before first search)
+        self.empty_state = EmptyStateWidget(
+            title="Start Discovering Topics & Niche Clusters",
+            description=(
+                "No search results are displayed yet. Run a keyword search above to cluster topics "
+                "and turn high-potential themes into production briefs."
+            ),
+            tips=[
+                "<b>Offline or Live API:</b> Test workflows offline with the Stub Provider or switch to YouTube Data API v3.",
+                "<b>Automatic Clustering:</b> Results are grouped into topical clusters using local TF-IDF cosine similarity.",
+                "<b>One-Click Hand-Off:</b> Save any search result as an Idea and hand it off directly into a Production Project.",
+            ],
+            action_label="Run Sample Search ('deep dubstep mix')",
+            action_tooltip="Populate a sample keyword search and cluster results immediately.",
+            on_action=self._on_run_sample_search,
+            secondary_label="+ Create Research Project",
+            secondary_tooltip="Create a new research project for the current channel.",
+            on_secondary=self._on_new_research_project,
+        )
+        left_col.addWidget(self.empty_state)
+
         self.results_table = QTableWidget(0, 6)
+        self.results_table.setAlternatingRowColors(True)
+        self.results_table.setToolTip(
+            "Clustered search results showing topic group, title, channel, provenance provider, and 30-day retention expiry."
+        )
         self.results_table.setHorizontalHeaderLabels(
             ["Topic Cluster", "Title", "Channel", "Provider", "Retention", "Expires"]
         )
@@ -118,6 +168,10 @@ class ResearchPage(QWidget):
         left_col.addWidget(self.results_table, stretch=1)
 
         save_from_result_btn = QPushButton("Save Selected Result as Idea…")
+        save_from_result_btn.setObjectName("AccentButton")
+        save_from_result_btn.setToolTip(
+            "Save the highlighted search result row into your Saved Ideas list with full source provenance."
+        )
         save_from_result_btn.clicked.connect(self._on_save_result_as_idea)
         left_col.addWidget(save_from_result_btn)
 
@@ -131,8 +185,10 @@ class ResearchPage(QWidget):
         brief_layout = QVBoxLayout(brief_group)
         self.brief_edit = QPlainTextEdit()
         self.brief_edit.setPlaceholderText("Document research themes, audience notes, and production angles…")
+        self.brief_edit.setToolTip("Freeform notes saved with the active research project.")
         brief_layout.addWidget(self.brief_edit)
         save_brief_btn = QPushButton("Save Brief Notes")
+        save_brief_btn.setToolTip("Persist your research brief notes to the local SQLite database.")
         save_brief_btn.clicked.connect(self._on_save_brief)
         brief_layout.addWidget(save_brief_btn)
         right_col.addWidget(brief_group, stretch=1)
@@ -141,11 +197,14 @@ class ResearchPage(QWidget):
         watch_group = QGroupBox("Competitor Watchlist (Public Metadata · ≤30d TTL)")
         watch_layout = QVBoxLayout(watch_group)
         self.watchlist_table = QTableWidget(0, 3)
+        self.watchlist_table.setAlternatingRowColors(True)
+        self.watchlist_table.setToolTip("Public channels tracked for inspiration (subject to 30-day API cache TTL).")
         self.watchlist_table.setHorizontalHeaderLabels(["Channel Title", "ID / Handle", "Expires At"])
         self.watchlist_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.watchlist_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         watch_layout.addWidget(self.watchlist_table)
         add_watch_btn = QPushButton("+ Add Public Channel to Watchlist")
+        add_watch_btn.setToolTip("Add a public YouTube channel handle or ID to your research watchlist.")
         add_watch_btn.clicked.connect(self._on_add_watchlist)
         watch_layout.addWidget(add_watch_btn)
         right_col.addWidget(watch_group, stretch=1)
@@ -154,6 +213,8 @@ class ResearchPage(QWidget):
         ideas_group = QGroupBox("Saved Ideas → Production Hand-Off")
         ideas_layout = QVBoxLayout(ideas_group)
         self.ideas_table = QTableWidget(0, 3)
+        self.ideas_table.setAlternatingRowColors(True)
+        self.ideas_table.setToolTip("Saved video concepts ready to be converted into Production Projects.")
         self.ideas_table.setHorizontalHeaderLabels(["Idea Title", "Status", "Rationale"])
         self.ideas_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
         self.ideas_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -162,11 +223,15 @@ class ResearchPage(QWidget):
 
         idea_btns = QHBoxLayout()
         new_idea_btn = QPushButton("+ New Idea")
+        new_idea_btn.setToolTip("Manually create a new video idea for this research project.")
         new_idea_btn.clicked.connect(self._on_new_idea)
         idea_btns.addWidget(new_idea_btn)
 
         handoff_btn = QPushButton("Hand Off to Production →")
-        handoff_btn.setStyleSheet("font-weight: bold;")
+        handoff_btn.setObjectName("PrimaryButton")
+        handoff_btn.setToolTip(
+            "Create a new Production Project and initial Metadata Draft from the selected idea."
+        )
         handoff_btn.clicked.connect(self._on_handoff_to_production)
         idea_btns.addWidget(handoff_btn)
 
@@ -176,8 +241,14 @@ class ResearchPage(QWidget):
         body.addLayout(right_col, stretch=2)
         root.addLayout(body, stretch=1)
 
+    def _on_run_sample_search(self) -> None:
+        self.query_input.setText("deep dubstep harmonic bass mix")
+        self._on_search()
+
     def refresh(self) -> None:
         self._update_quota_label()
+        if hasattr(self, "empty_state"):
+            self.empty_state.setVisible(len(self._current_results) == 0)
         try:
             with session_scope() as session:
                 channels = ChannelService(session).list_active()
@@ -319,6 +390,9 @@ class ResearchPage(QWidget):
         for cluster in clusters:
             for r in cluster.results:
                 self._current_results.append((cluster.label, r))
+
+        if hasattr(self, "empty_state"):
+            self.empty_state.setVisible(len(self._current_results) == 0)
 
         self.results_table.setRowCount(len(self._current_results))
         for row_idx, (cluster_label, r) in enumerate(self._current_results):

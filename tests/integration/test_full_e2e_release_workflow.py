@@ -106,7 +106,7 @@ class TestFullE2EReleaseWorkflow(unittest.TestCase):
             self.assertEqual(len(wf_a.peaks), 32)
             self.assertGreater(max(wf_a.peaks), 0.1)
 
-            # 3. Run VirtualDJ Intelligence (BPM, Camelot key, cue points, harmonic sort)
+            # 3. Run Harmonic Audio Intelligence (BPM, Camelot key, cue points, harmonic sort)
             dj = DJIntelligenceService(waveform_generator=waveform_gen)
             analysis_a = dj.analyze_track(track_a, duration_ms=2500, highlight_duration_ms=1200)
             analysis_b = dj.analyze_track(track_b, duration_ms=2500, highlight_duration_ms=1200)
@@ -184,7 +184,7 @@ class TestFullE2EReleaseWorkflow(unittest.TestCase):
             )
             self.assertTrue(img_res.output_path.exists())
 
-            # 6. Render Master Video with CapCut Bar Spectrum, VisualFX & .srt Subtitles
+            # 6. Render Master Video with Bar Spectrum, VisualFX & .srt Subtitles
             renderer = VideoRendererService()
             video_path = output_dir / "release_video.mp4"
             visual_fx = VisualFXConfig(

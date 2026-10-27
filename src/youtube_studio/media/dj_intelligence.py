@@ -1,4 +1,4 @@
-"""VirtualDJ-style audio intelligence: BPM & Camelot key estimation, auto-silence cue points, and harmonic sorting."""
+"""Harmonic audio intelligence: BPM & Camelot key estimation, auto-silence cue points, and harmonic sorting."""
 
 from __future__ import annotations
 
@@ -128,7 +128,7 @@ class DJIntelligenceService:
         duration_ms: int,
         window_ms: int = 30_000,
     ) -> tuple[int, int]:
-        """Locate the highest-energy contiguous window (for CapCut Shorts/Reels clipping)."""
+        """Locate the highest-energy contiguous window (for 9:16 Shorts/Reels highlight clipping)."""
         if not peaks or duration_ms <= 0:
             return 0, min(max(0, duration_ms), window_ms)
         if duration_ms <= window_ms:
