@@ -7,7 +7,9 @@ from typing import Optional
 
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
+    QDoubleSpinBox,
     QFileDialog,
     QFormLayout,
     QGroupBox,
@@ -32,14 +34,20 @@ from youtube_studio.ai import (
     MetadataGenerator,
 )
 from youtube_studio.config import HardwareProbe, get_settings
-from youtube_studio.domain.models.channel import ChannelBrandConfig
+from youtube_studio.domain.models.channel import (
+    VOICE_LIBRARY_PRESETS,
+    ChannelBrandConfig,
+)
 from youtube_studio.domain.models.project import AssetType
 from youtube_studio.domain.services import (
     ChannelService,
+    MediaLibraryService,
     ModelRegistryService,
     ProjectService,
 )
+from youtube_studio.media.scanner import MediaScanner
 from youtube_studio.media.thumbnail import PALETTES
+from youtube_studio.media.tts_service import LocalTTSService
 from youtube_studio.storage import session_scope
 from youtube_studio.ui.components import EmptyStateWidget
 
@@ -128,25 +136,36 @@ class ArtworkPage(QWidget):
         # Split body: Left = Metadata Studio, Right = Artwork & Thumbnail Studio
         body = QHBoxLayout()
 
-        # Left column: Local AI Metadata Generator
-        meta_group = QGroupBox("Local AI Metadata Generator (Title · Description · Tags)")
+        # Left column: Local AI Metadata + Explainable Title Scorer + Hook/Outline/Script + Voiceover
+        meta_group = QGroupBox("Local AI Metadata, Explainable Title Scorer & Script / Voiceover Studio")
         meta_layout = QVBoxLayout(meta_group)
 
-        gen_meta_btn = QPushButton("Generate Metadata (Local LM / Template Fallback)")
+        gen_meta_btn = QPushButton("✨ Generate 5 Ranked Titles (Explainable Score) + Description + Tags")
         gen_meta_btn.setObjectName("PrimaryButton")
         gen_meta_btn.setToolTip(
-            "Generate 3 YouTube title candidates (≤100 chars), timestamped description, and tags (≤500 chars)."
+            "Generate 5 YouTube title candidates ranked by transparent rules (length, seed keywords, channel tone), "
+            "timestamped chapter description, and tags (≤500 chars)."
         )
         gen_meta_btn.clicked.connect(self._on_generate_metadata)
         meta_layout.addWidget(gen_meta_btn)
 
+        self.best_title_label = QLabel(
+            "🏆 Highest Scoring Title: Click 'Generate 5 Ranked Titles' above (evaluated by transparent length, keyword & tone rules — never fake CTR)"
+        )
+        self.best_title_label.setWordWrap(True)
+        self.best_title_label.setStyleSheet(
+            "color: #fcd34d; background: rgba(250, 204, 21, 0.10); border: 1px solid rgba(250, 204, 21, 0.35); "
+            "border-radius: 6px; padding: 6px 10px; font-size: 12px; font-weight: 600;"
+        )
+        meta_layout.addWidget(self.best_title_label)
+
         meta_form = QFormLayout()
         self.candidates_combo = QComboBox()
-        self.candidates_combo.setToolTip("Pick from the generated title candidates to populate the Selected Title field.")
-        self.candidates_combo.currentTextChanged.connect(
-            lambda text: self.title_input.setText(text) if text else None
+        self.candidates_combo.setToolTip(
+            "Ranked title options with explainable criteria (Length OK, Seed Keywords, Channel Tone)."
         )
-        meta_form.addRow("Title Candidates:", self.candidates_combo)
+        self.candidates_combo.currentIndexChanged.connect(self._on_candidate_combo_changed)
+        meta_form.addRow("Ranked Titles:", self.candidates_combo)
 
         self.title_input = QLineEdit()
         self.title_input.setToolTip("Final YouTube video title (enforced ≤ 100 characters).")
@@ -158,6 +177,68 @@ class ArtworkPage(QWidget):
         meta_form.addRow("Tags (≤500 chars):", self.tags_input)
 
         meta_layout.addLayout(meta_form)
+
+        # Structured Hook -> Outline -> Full Script + Paste/Upload + Voiceover (TTS)
+        script_hdr = QHBoxLayout()
+        script_hdr.addWidget(QLabel("Structured Script (Hook → Outline → Full Script) / Narration:"))
+        self.btn_step_hook = QPushButton("1. Hook")
+        self.btn_step_hook.setToolTip("Generate a 15-second opening hook tailored to the channel tone.")
+        self.btn_step_hook.clicked.connect(self._on_generate_hook_step)
+        script_hdr.addWidget(self.btn_step_hook)
+
+        self.btn_step_outline = QPushButton("2. Outline")
+        self.btn_step_outline.setToolTip("Build a timestamped section outline from your hook and project chapters.")
+        self.btn_step_outline.clicked.connect(self._on_generate_outline_step)
+        script_hdr.addWidget(self.btn_step_outline)
+
+        self.btn_step_full_script = QPushButton("3. Full Script")
+        self.btn_step_full_script.setObjectName("AccentButton")
+        self.btn_step_full_script.setToolTip("Draft the full narration / host script timed to your project's target duration.")
+        self.btn_step_full_script.clicked.connect(self._on_generate_full_script_step)
+        script_hdr.addWidget(self.btn_step_full_script)
+
+        self.btn_upload_script = QPushButton("📄 Upload Script…")
+        self.btn_upload_script.setToolTip(
+            "Upload a .txt, .md, or .srt script file to attach narration and automatically extract 00:00 chapters."
+        )
+        self.btn_upload_script.clicked.connect(self._on_upload_script_file)
+        script_hdr.addWidget(self.btn_upload_script)
+        meta_layout.addLayout(script_hdr)
+
+        self.script_edit = QPlainTextEdit()
+        self.script_edit.setPlaceholderText(
+            "Optional: Paste or generate Hook → Outline → Full Narration Script here (or upload a .txt/.md/.srt file)…"
+        )
+        self.script_edit.setMaximumHeight(110)
+        meta_layout.addWidget(self.script_edit)
+
+        # Voice Library (Male/Female, Speed) + Local AI Voiceover (TTS)
+        tts_row = QHBoxLayout()
+        tts_row.addWidget(QLabel("Voice Preset:"))
+        self.voice_preset_combo = QComboBox()
+        for vp in VOICE_LIBRARY_PRESETS.values():
+            self.voice_preset_combo.addItem(f"🎙 {vp.label} [{vp.gender.title()}]", vp.key)
+        self.voice_preset_combo.setToolTip(
+            "Select a local-first male or female voice preset (stored per channel; zero mandatory paid API)."
+        )
+        tts_row.addWidget(self.voice_preset_combo, stretch=1)
+
+        tts_row.addWidget(QLabel("Speed:"))
+        self.voice_speed_spin = QDoubleSpinBox()
+        self.voice_speed_spin.setRange(0.5, 2.0)
+        self.voice_speed_spin.setSingleStep(0.05)
+        self.voice_speed_spin.setValue(1.0)
+        self.voice_speed_spin.setSuffix("x")
+        tts_row.addWidget(self.voice_speed_spin)
+
+        self.btn_synthesize_tts = QPushButton("🔊 Synthesize Voiceover (Local TTS)")
+        self.btn_synthesize_tts.setObjectName("AccentButton")
+        self.btn_synthesize_tts.setToolTip(
+            "Synthesize the script above into a local WAV voiceover file and add it to the project & Music Library."
+        )
+        self.btn_synthesize_tts.clicked.connect(self._on_synthesize_voiceover)
+        tts_row.addWidget(self.btn_synthesize_tts)
+        meta_layout.addLayout(tts_row)
 
         meta_layout.addWidget(QLabel("Description (with Chapters):"))
         self.desc_edit = QPlainTextEdit()
@@ -190,6 +271,26 @@ class ArtworkPage(QWidget):
         self.aspect_combo.addItems(["16:9 (1280x720)", "9:16 (1080x1920)"])
         self.aspect_combo.setToolTip("Choose 16:9 for standard YouTube videos or 9:16 for YouTube Shorts.")
         art_form.addRow("Aspect Ratio:", self.aspect_combo)
+
+        ref_row = QHBoxLayout()
+        self.ref_image_input = QLineEdit()
+        self.ref_image_input.setPlaceholderText("Optional reference image path to lock palette & visual style…")
+        self.ref_image_input.setToolTip(
+            "Upload or select a reference image to extract its color palette and composite it into generated thumbnails."
+        )
+        ref_row.addWidget(self.ref_image_input, stretch=1)
+
+        self.btn_pick_ref_image = QPushButton("🖼 Reference…")
+        self.btn_pick_ref_image.setToolTip("Pick a reference image (.png, .jpg, .webp) for Style Lock.")
+        self.btn_pick_ref_image.clicked.connect(self._on_pick_reference_image)
+        ref_row.addWidget(self.btn_pick_ref_image)
+        art_form.addRow("Reference Image:", ref_row)
+
+        self.chk_style_lock = QCheckBox("🔒 Lock Thumbnail Palette && Visual Layout to Reference Image")
+        self.chk_style_lock.setToolTip(
+            "When checked, locks the channel's thumbnail color palette and backdrop blend to the selected Reference Image."
+        )
+        art_form.addRow("Style Lock:", self.chk_style_lock)
 
         art_out_row = QHBoxLayout()
         self.art_output_input = QLineEdit()
@@ -397,16 +498,203 @@ class ArtworkPage(QWidget):
                 channel_name=ch.name if ch else "YouTube Automation Studio",
                 brand_config=ch.brand_config if ch else ChannelBrandConfig(),
                 chapters=chapters,
+                script_text=self.script_edit.toPlainText().strip() or None,
+                candidate_count=5,
             )
             res = generator.generate(req)
 
         self.candidates_combo.blockSignals(True)
         self.candidates_combo.clear()
-        self.candidates_combo.addItems(res.title_candidates)
+        if res.scored_candidates:
+            for sc in res.scored_candidates:
+                label = f"[{sc.total_score}/100 · {sc.explanation}] {sc.title}"
+                self.candidates_combo.addItem(label, sc.title)
+        else:
+            for t in res.title_candidates:
+                self.candidates_combo.addItem(t, t)
         self.candidates_combo.blockSignals(False)
-        self.title_input.setText(res.title)
+
+        best = res.highest_scoring_title
+        if best is not None:
+            self.best_title_label.setText(
+                f"🏆 Highest Scoring Title ({best.total_score}/100 — {best.explanation}):  {best.title}"
+            )
+            self.title_input.setText(best.title)
+        else:
+            self.title_input.setText(res.title)
         self.tags_input.setText(", ".join(res.tags))
         self.desc_edit.setPlainText(res.description)
+
+    def _on_candidate_combo_changed(self, idx: int) -> None:
+        if idx < 0:
+            return
+        raw_title = self.candidates_combo.itemData(idx)
+        self.title_input.setText(str(raw_title or self.candidates_combo.currentText()))
+
+    def _on_generate_hook_step(self) -> None:
+        proj_id = self.current_project_id()
+        ch_id = self.current_channel_id()
+        topic = self.title_input.text().strip() or self.prompt_input.text().strip() or "Featured Session"
+        ch_name = "Studio Channel"
+        tone = "warm, authentic studio session"
+        target_mins = 15
+        if ch_id:
+            with session_scope() as session:
+                ch = ChannelService(session).get(ch_id)
+                if ch:
+                    ch_name = ch.name
+                    tone = str(ch.brand_config.metadata_template.get("tone") or tone)
+                    target_mins = int(ch.brand_config.target_duration_minutes or 15)
+                if proj_id:
+                    proj = ProjectService(session).get_project(proj_id)
+                    if proj and not self.title_input.text().strip():
+                        topic = proj.name
+        hook = MetadataGenerator().generate_hook(
+            topic,
+            channel_name=ch_name,
+            tone=tone,
+            target_duration_minutes=target_mins,
+        )
+        self.script_edit.setPlainText(hook)
+
+    def _on_generate_outline_step(self) -> None:
+        proj_id = self.current_project_id()
+        ch_id = self.current_channel_id()
+        topic = self.title_input.text().strip() or self.prompt_input.text().strip() or "Featured Session"
+        chapters = []
+        target_mins = 15
+        with session_scope() as session:
+            if ch_id:
+                ch = ChannelService(session).get(ch_id)
+                if ch:
+                    target_mins = int(ch.brand_config.target_duration_minutes or 15)
+            if proj_id:
+                chapters = ProjectService(session).compute_chapters(proj_id)
+        current_text = self.script_edit.toPlainText().strip()
+        outline = MetadataGenerator().generate_outline(
+            topic,
+            hook=current_text,
+            chapters=chapters,
+            target_duration_minutes=target_mins,
+        )
+        combined = f"{current_text}\n\n{outline}".strip() if current_text else outline
+        self.script_edit.setPlainText(combined)
+
+    def _on_generate_full_script_step(self) -> None:
+        proj_id = self.current_project_id()
+        ch_id = self.current_channel_id()
+        topic = self.title_input.text().strip() or self.prompt_input.text().strip() or "Featured Session"
+        ch_name = "Studio Channel"
+        tone = "warm, authentic studio session"
+        target_mins = 15
+        chapters = []
+        with session_scope() as session:
+            if ch_id:
+                ch = ChannelService(session).get(ch_id)
+                if ch:
+                    ch_name = ch.name
+                    tone = str(ch.brand_config.metadata_template.get("tone") or tone)
+                    target_mins = int(ch.brand_config.target_duration_minutes or 15)
+            if proj_id:
+                proj_svc = ProjectService(session)
+                proj = proj_svc.get_project(proj_id)
+                if proj and not self.title_input.text().strip():
+                    topic = proj.name
+                chapters = proj_svc.compute_chapters(proj_id)
+        draft = MetadataGenerator().generate_structured_script(
+            topic,
+            channel_name=ch_name,
+            tone=tone,
+            chapters=chapters,
+            target_duration_minutes=target_mins,
+        )
+        self.script_edit.setPlainText(draft.full_script)
+
+    def _on_upload_script_file(self) -> None:
+        chosen, _ = QFileDialog.getOpenFileName(
+            self,
+            "Upload Script / Narration Text File",
+            str(Path.home()),
+            "Script Files (*.txt *.md *.srt);;All Files (*)",
+        )
+        if not chosen:
+            return
+        text = Path(chosen).read_text(encoding="utf-8", errors="replace")
+        self.script_edit.setPlainText(text)
+        chapters, _ = MetadataGenerator.parse_script_text(text)
+        if chapters:
+            ch_lines = "\n".join(f"{c.format_timestamp()} {c.title}" for c in chapters)
+            cur_desc = self.desc_edit.toPlainText().strip()
+            self.desc_edit.setPlainText(
+                f"{cur_desc}\n\nExtracted Script Chapters:\n{ch_lines}".strip()
+            )
+        QMessageBox.information(
+            self,
+            "Script Uploaded",
+            f"Loaded script '{Path(chosen).name}' ({len(text.split())} words, {len(chapters)} timestamped chapters detected).",
+        )
+
+    def _on_synthesize_voiceover(self) -> None:
+        raw_script = self.script_edit.toPlainText().strip()
+        if not raw_script:
+            self._on_generate_full_script_step()
+            raw_script = self.script_edit.toPlainText().strip()
+        if not raw_script:
+            QMessageBox.warning(self, "Voiceover (TTS)", "Enter or generate a script first.")
+            return
+
+        preset_key = str(self.voice_preset_combo.currentData() or "warm_male_narrator")
+        speed = float(self.voice_speed_spin.value())
+        out_dir = get_settings().resolved_data_dir() / "music_library" / "Voiceovers"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        proj_id = self.current_project_id() or "studio"
+        wav_path = out_dir / f"voiceover_{proj_id[:8]}_{preset_key}.wav"
+
+        try:
+            tts = LocalTTSService()
+            vo_res = tts.synthesize(
+                raw_script,
+                wav_path,
+                preset_key=preset_key,
+                speed=speed,
+            )
+            with session_scope() as session:
+                ch_id = self.current_channel_id()
+                if ch_id:
+                    ch_svc = ChannelService(session)
+                    ch = ch_svc.get(ch_id)
+                    if ch:
+                        cfg = ch.brand_config.model_copy(deep=True)
+                        cfg.preferred_voice_preset = preset_key
+                        cfg.voice_speed = speed
+                        ch_svc.update_brand_config(ch_id, cfg)
+                media_svc = MediaLibraryService(session)
+                info = MediaScanner().inspect_file(vo_res.output_path)
+                info.metadata["title"] = f"Voiceover — {vo_res.voice_label}"
+                info.metadata["folder"] = "Voiceovers"
+                media_svc.upsert(info)
+            QMessageBox.information(
+                self,
+                "Local AI Voiceover Synthesized",
+                f"Synthesized voiceover ({vo_res.duration_ms / 1000.0:.1f}s, {vo_res.word_count} words):\n"
+                f"  Voice: {vo_res.voice_label} ({vo_res.speed:.2f}x)\n"
+                f"  Engine: {vo_res.engine_used}\n"
+                f"  Saved to Music Library ('Voiceovers'):\n  {vo_res.output_path}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Voiceover Synthesis Failed", str(exc))
+
+    def _on_pick_reference_image(self) -> None:
+        chosen, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Reference Image for Style Lock",
+            str(Path.home()),
+            "Image Files (*.png *.jpg *.jpeg *.webp *.bmp)",
+        )
+        if not chosen:
+            return
+        self.ref_image_input.setText(chosen)
+        self.chk_style_lock.setChecked(True)
 
     def _on_save_metadata_draft(self) -> None:
         project_id = self.current_project_id()
@@ -464,6 +752,15 @@ class ArtworkPage(QWidget):
                 ch = ChannelService(session).get(channel_id)
                 proj_svc = ProjectService(session)
                 proj = proj_svc.get_project(project_id)
+                ref_raw = self.ref_image_input.text().strip() if hasattr(self, "ref_image_input") else ""
+                ref_path = Path(ref_raw).expanduser().resolve() if ref_raw and Path(ref_raw).exists() else None
+                style_locked = bool(self.chk_style_lock.isChecked()) if hasattr(self, "chk_style_lock") else False
+                if ch and (ref_path or style_locked):
+                    cfg = ch.brand_config.model_copy(deep=True)
+                    cfg.reference_image_path = str(ref_path) if ref_path else cfg.reference_image_path
+                    cfg.style_lock = style_locked
+                    ChannelService(session).update_brand_config(channel_id, cfg)
+
                 art_gen = ArtworkGenerator()
                 res = art_gen.generate(
                     prompt,
@@ -473,6 +770,8 @@ class ArtworkPage(QWidget):
                     style_palette=palette,
                     subtitle=ch.name if ch else None,
                     badge_text=proj.project_type.value.upper() if proj else "MIX",
+                    reference_image_path=ref_path,
+                    style_lock=style_locked,
                 )
                 proj_svc.register_asset(
                     project_id,

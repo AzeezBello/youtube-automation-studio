@@ -73,6 +73,17 @@ class ChannelService:
         self._session.flush()
         return channel
 
+    def update_brand_config(
+        self,
+        channel_id: str,
+        brand_config: ChannelBrandConfig,
+    ) -> Channel:
+        ch = self.get(channel_id)
+        if ch is None:
+            raise ValueError(f"Channel {channel_id} not found")
+        ch.brand_config = brand_config
+        return self.update(ch)
+
     def archive(self, channel_id: str) -> None:
         orm = self._session.get(ChannelORM, channel_id)
         if orm is None:

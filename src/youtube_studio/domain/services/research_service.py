@@ -16,6 +16,11 @@ from youtube_studio.domain.services.channel_service import ChannelService
 from youtube_studio.domain.services.project_service import ProjectService
 from youtube_studio.research.clustering import TopicClusterer
 from youtube_studio.research.providers.base import ResearchResult, RetentionClass
+from youtube_studio.research.providers.youtube_api import (
+    YouTubeDataAPIProvider,
+    extract_youtube_video_id,
+    parse_chapters_from_description,
+)
 from youtube_studio.research.watchlist import WatchlistEntry
 from youtube_studio.storage.orm import ResearchProjectORM, ResearchSourceORM, SavedIdeaORM
 
@@ -249,6 +254,91 @@ class ResearchService:
     # ------------------------------------------------------------------
     # Saved Ideas & Production Brief Hand-Off
     # ------------------------------------------------------------------
+
+    def import_from_video_url(
+        self,
+        url_or_id: str,
+        *,
+        channel_id: Optional[str] = None,
+        research_project_id: Optional[str] = None,
+        yt_provider: Optional[YouTubeDataAPIProvider] = None,
+    ) -> tuple[ResearchProject, ResearchSource, SavedIdea]:
+        """Paste a YouTube video URL/ID -> fetch public metadata & chapters -> save as ResearchProject brief + SavedIdea."""
+        provider = yt_provider or YouTubeDataAPIProvider()
+        result = provider.fetch_video_public_metadata(url_or_id, allow_offline_fallback=True)
+        payload = result.payload or {}
+        vid_id = str(payload.get("video_id") or extract_youtube_video_id(url_or_id))
+        title = str(payload.get("title") or f"Imported Video ({vid_id})").strip()
+        desc = str(payload.get("description") or "").strip()
+        ch_title = str(payload.get("channel_title") or "Public YouTube Channel").strip()
+        chapters = payload.get("chapters")
+        if not isinstance(chapters, list):
+            chapters = parse_chapters_from_description(desc)
+        tags = list(payload.get("tags") or [])
+
+        chapter_lines = [
+            f"  • {c.get('timestamp', '00:00')} {c.get('title', '')}"
+            for c in chapters
+            if isinstance(c, dict)
+        ]
+        chapters_block = (
+            "Extracted Video Chapters:\n" + "\n".join(chapter_lines)
+            if chapter_lines
+            else "Extracted Video Chapters: None detected in description"
+        )
+        structured_brief = (
+            f"=== Imported YouTube Video Brief ===\n"
+            f"Source URL: https://www.youtube.com/watch?v={vid_id}\n"
+            f"Original Title: {title}\n"
+            f"Source Channel: {ch_title}\n"
+            f"Tags: {', '.join(tags[:12]) if tags else 'N/A'}\n\n"
+            f"{chapters_block}\n\n"
+            f"Original Description Excerpt:\n{desc[:800]}"
+        )
+
+        if research_project_id:
+            r_proj = self.get_research_project(research_project_id)
+            if r_proj is not None:
+                merged_brief = (
+                    f"{r_proj.brief}\n\n{structured_brief}".strip()
+                    if r_proj.brief
+                    else structured_brief
+                )
+                r_proj = self.update_research_project(r_proj.id, brief=merged_brief)
+            else:
+                r_proj = self.create_research_project(
+                    f"URL Brief: {title[:60]}",
+                    channel_id=channel_id,
+                    brief=structured_brief,
+                )
+        else:
+            r_proj = self.create_research_project(
+                f"URL Brief: {title[:60]}",
+                channel_id=channel_id,
+                brief=structured_brief,
+            )
+
+        source = self.record_source(result, research_project_id=r_proj.id)
+        rationale = (
+            f"Imported from YouTube video '{title}' by {ch_title} "
+            f"({len(chapters)} chapters extracted)."
+        )
+        idea = self.save_idea(
+            title,
+            channel_id=channel_id or r_proj.channel_id,
+            research_project_id=r_proj.id,
+            rationale=rationale,
+            evidence=[
+                {
+                    "source_id": source.id,
+                    "external_reference": source.external_reference,
+                    "url": f"https://www.youtube.com/watch?v={vid_id}",
+                    "chapters": chapters,
+                    "tags": tags,
+                }
+            ],
+        )
+        return r_proj, source, idea
 
     def save_idea(
         self,

@@ -56,6 +56,8 @@ class ThumbnailSpec:
     width: Optional[int] = None
     height: Optional[int] = None
     motif: str = "vinyl_and_sound_system"
+    reference_image_path: Optional[Path] = None
+    style_lock: bool = False
 
     def resolved_dimensions(self) -> tuple[int, int]:
         if self.width and self.height:
@@ -83,7 +85,11 @@ class ThumbnailEngine:
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         width, height = spec.resolved_dimensions()
-        colors = PALETTES.get(spec.palette, PALETTES["warm_earth"])
+        colors = dict(PALETTES.get(spec.palette, PALETTES["warm_earth"]))
+        if spec.reference_image_path and Path(spec.reference_image_path).exists():
+            extracted = self.extract_palette_from_image(Path(spec.reference_image_path))
+            if extracted:
+                colors.update(extracted)
 
         try:
             self._render_with_pillow(spec, output_path, width=width, height=height, colors=colors)
@@ -98,6 +104,36 @@ class ThumbnailEngine:
             checksum=checksum,
             palette=spec.palette if spec.palette in PALETTES else "warm_earth",
         )
+
+    @staticmethod
+    def extract_palette_from_image(image_path: Path) -> Optional[dict[str, tuple[int, int, int]]]:
+        """Extract dominant background and accent colors from a reference image for Style Lock."""
+        if not image_path.exists():
+            return None
+        try:
+            from PIL import Image
+
+            with Image.open(image_path) as ref:
+                rgb = ref.convert("RGB").resize((16, 16))
+                pixels = list(rgb.getdata())
+            if not pixels:
+                return None
+            # Sort by luminance
+            sorted_px = sorted(pixels, key=lambda p: 0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2])
+            darkest = sorted_px[max(0, len(sorted_px) // 8)]
+            mid_dark = sorted_px[max(0, len(sorted_px) // 3)]
+            brightest = sorted_px[min(len(sorted_px) - 1, (len(sorted_px) * 4) // 5)]
+            return {
+                "bg_top": (int(mid_dark[0] * 0.65), int(mid_dark[1] * 0.65), int(mid_dark[2] * 0.65)),
+                "bg_bottom": (int(darkest[0] * 0.45), int(darkest[1] * 0.45), int(darkest[2] * 0.45)),
+                "accent": (
+                    max(90, min(255, int(brightest[0]))),
+                    max(90, min(255, int(brightest[1]))),
+                    max(90, min(255, int(brightest[2]))),
+                ),
+            }
+        except Exception:
+            return None
 
     @staticmethod
     def _render_with_pillow(
@@ -119,9 +155,19 @@ class ThumbnailEngine:
         for y in range(height):
             t = y / max(1, height - 1)
             r = int(top_r + (bot_r - top_r) * t)
-            g = int(top_g + (bot_g - top_g) * t)
+            g = int(top_g + (bot_g - top_r) * t) if False else int(top_g + (bot_g - top_g) * t)
             b = int(top_b + (bot_b - top_b) * t)
             draw.line([(0, y), (width, y)], fill=(r, g, b))
+
+        # Optional Reference Image composite when reference_image_path is provided
+        if spec.reference_image_path and Path(spec.reference_image_path).exists():
+            try:
+                with Image.open(spec.reference_image_path) as ref_im:
+                    ref_rgb = ref_im.convert("RGB").resize((width, height))
+                    img = Image.blend(img, ref_rgb, alpha=0.45 if spec.style_lock else 0.32)
+                    draw = ImageDraw.Draw(img)
+            except Exception:
+                pass
 
         # Outer border frame
         margin = max(24, min(width, height) // 24)

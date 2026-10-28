@@ -8,6 +8,7 @@ from typing import Optional
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices, QFont
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDialog,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPlainTextEdit,
+    QProgressBar,
     QPushButton,
     QSpinBox,
     QTableWidget,
@@ -34,6 +36,10 @@ from PySide6.QtWidgets import (
 )
 
 from youtube_studio.config import get_settings
+from youtube_studio.domain.models.channel import (
+    NICHE_STYLE_PRESETS,
+    apply_niche_preset_to_brand_config,
+)
 from youtube_studio.domain.models.media import MediaType
 from youtube_studio.domain.models.project import ProjectType, TransitionConfig, TransitionType
 from youtube_studio.domain.services.autopilot_service import (
@@ -44,6 +50,7 @@ from youtube_studio.domain.services.channel_service import ChannelService
 from youtube_studio.domain.services.media_service import MediaLibraryService
 from youtube_studio.domain.services.project_service import ProjectService
 from youtube_studio.jobs.runner import ProductionJobRunner, sanitize_output_name
+from youtube_studio.media.nle_exporter import NLEExporterService
 from youtube_studio.media.renderer import VisualizerStyle
 from youtube_studio.media.shorts_clipper import ShortsClipperService
 from youtube_studio.storage import session_scope
@@ -106,6 +113,28 @@ class ProductionPage(QWidget):
         new_project_btn.setToolTip("Create a new single-track, DJ mix, or album project under the selected channel.")
         new_project_btn.clicked.connect(self._on_new_project)
         selector_row.addWidget(new_project_btn)
+
+        selector_row.addWidget(QLabel("Style Preset:"))
+        self.niche_preset_combo = QComboBox()
+        for preset in NICHE_STYLE_PRESETS.values():
+            self.niche_preset_combo.addItem(f"🎨 {preset.label}", preset.key)
+        self.niche_preset_combo.setToolTip(
+            "Select a Niche / Style Preset to configure aspect ratio, palette, audio visualizer, metadata tone, and target length."
+        )
+        self.niche_preset_combo.currentIndexChanged.connect(self._on_niche_preset_changed)
+        selector_row.addWidget(self.niche_preset_combo)
+
+        selector_row.addWidget(QLabel("Target Length:"))
+        self.target_length_spin = QSpinBox()
+        self.target_length_spin.setRange(0, 240)
+        self.target_length_spin.setSpecialValueText("Auto (Full)")
+        self.target_length_spin.setSuffix(" min")
+        self.target_length_spin.setValue(60)
+        self.target_length_spin.setToolTip(
+            "Target video duration in minutes (drives script word count estimate and timeline duration comparison)."
+        )
+        self.target_length_spin.valueChanged.connect(lambda _: self._reload_tracks())
+        selector_row.addWidget(self.target_length_spin)
 
         root.addLayout(selector_row)
 
@@ -472,6 +501,28 @@ class ProductionPage(QWidget):
         self.shorts_btn.clicked.connect(self._on_export_short_highlight)
         chapters_layout.addWidget(self.shorts_btn)
 
+        self.export_nle_btn = QPushButton("🎞 Export Project XML & Clip List for External Video Editor")
+        self.export_nle_btn.setToolTip(
+            "Export Final Cut Pro XML (.fcpxml), CMX 3600 EDL (.edl), and a CSV/JSON clip list "
+            "into the output folder and open it for external video editor hand-off."
+        )
+        self.export_nle_btn.clicked.connect(self._on_export_nle_bundle)
+        chapters_layout.addWidget(self.export_nle_btn)
+
+        # Live Generation Stage Progress (Script -> Voice -> Visuals -> Mix/Video -> Package)
+        prog_row = QHBoxLayout()
+        self.stage_status_label = QLabel("Stage Ready: Script → Voice → Visuals → Mix/Video → Package")
+        self.stage_status_label.setStyleSheet("color: #94a3b8; font-size: 11px;")
+        prog_row.addWidget(self.stage_status_label, stretch=1)
+
+        self.stage_progress_bar = QProgressBar()
+        self.stage_progress_bar.setRange(0, 100)
+        self.stage_progress_bar.setValue(0)
+        self.stage_progress_bar.setFixedWidth(180)
+        self.stage_progress_bar.setFixedHeight(14)
+        prog_row.addWidget(self.stage_progress_bar)
+        chapters_layout.addLayout(prog_row)
+
         right_col.addWidget(chapters_group, stretch=1)
         body.addLayout(right_col, stretch=2)
 
@@ -701,6 +752,23 @@ class ProductionPage(QWidget):
         base_out = self._resolve_and_save_output_base()
         vis_style = self.visualizer_combo.currentText()
         custom_vis = self.selected_visual_asset_path()
+        preset_key = (
+            str(self.niche_preset_combo.currentData() or "")
+            if hasattr(self, "niche_preset_combo")
+            else None
+        )
+        target_mins = (
+            int(self.target_length_spin.value())
+            if hasattr(self, "target_length_spin")
+            else 60
+        )
+
+        def _update_ui_stage(label: str, pct: int) -> None:
+            if hasattr(self, "stage_status_label"):
+                self.stage_status_label.setText(label)
+            if hasattr(self, "stage_progress_bar"):
+                self.stage_progress_bar.setValue(pct)
+            QApplication.processEvents()
 
         try:
             with session_scope() as session:
@@ -714,9 +782,12 @@ class ProductionPage(QWidget):
                     visualizer_style=vis_style,
                     custom_visual_path=custom_vis,
                     output_name=custom_out_name or title_override or None,
+                    niche_preset=preset_key or None,
+                    target_duration_minutes=target_mins,
                     render_video=render_video,
                     export_short=render_video,
                     output_base_dir=base_out,
+                    on_stage_progress=_update_ui_stage,
                 )
         except Exception as exc:
             QMessageBox.critical(self, "1-Click Auto-Pilot", str(exc))
@@ -824,6 +895,36 @@ class ProductionPage(QWidget):
 
     def _on_channel_changed(self, _index: int) -> None:
         self._reload_projects()
+
+    def _on_niche_preset_changed(self, _index: int) -> None:
+        if not hasattr(self, "niche_preset_combo"):
+            return
+        preset_key = str(self.niche_preset_combo.currentData() or "roots_reggae_mix")
+        preset = NICHE_STYLE_PRESETS.get(preset_key)
+        if preset is None:
+            return
+        if hasattr(self, "visualizer_combo"):
+            idx = self.visualizer_combo.findText(preset.visualizer_style)
+            if idx >= 0:
+                self.visualizer_combo.setCurrentIndex(idx)
+        if hasattr(self, "target_length_spin"):
+            self.target_length_spin.blockSignals(True)
+            self.target_length_spin.setValue(preset.target_duration_minutes)
+            self.target_length_spin.blockSignals(False)
+        ch_id = self.current_channel_id()
+        if ch_id:
+            try:
+                with session_scope() as session:
+                    ch_svc = ChannelService(session)
+                    ch = ch_svc.get(ch_id)
+                    if ch:
+                        updated_cfg = apply_niche_preset_to_brand_config(
+                            preset_key, existing=ch.brand_config
+                        )
+                        ch_svc.update_brand_config(ch_id, updated_cfg)
+            except Exception:
+                pass
+        self._reload_tracks()
 
     def _reload_projects(self) -> None:
         channel_id = self.current_channel_id()
@@ -942,7 +1043,22 @@ class ProductionPage(QWidget):
             vis_lbl = vis_path.name if vis_path else "Studio Artwork / Video Loop"
             self.mini_timeline.set_timeline_data(clip_items, visual_label=vis_lbl)
 
-        lines = [f"Estimated Total Duration: {total_ms / 1000.0:.1f}s", "", "Chapters:"]
+        target_mins = (
+            int(self.target_length_spin.value())
+            if hasattr(self, "target_length_spin")
+            else 0
+        )
+        cur_mins = total_ms / 60_000.0
+        target_str = (
+            f" · Target Length: {target_mins} min (Est. Script: ~{target_mins * 140} words)"
+            if target_mins > 0
+            else " · Target Length: Auto (Full Mix)"
+        )
+        lines = [
+            f"Estimated Total Duration: {total_ms / 1000.0:.1f}s ({cur_mins:.1f} min){target_str}",
+            "",
+            "Chapters:",
+        ]
         for ch in chapters:
             lines.append(f"{ch.format_timestamp()} {ch.title}")
         self.chapters_preview.setPlainText("\n".join(lines))
@@ -1296,6 +1412,14 @@ class ProductionPage(QWidget):
         return sanitize_output_name(raw) if raw else project_id
 
     def _on_run_production(self) -> None:
+        channel_id = self.current_channel_id()
+        if not channel_id:
+            QMessageBox.warning(
+                self,
+                "Channel Profile Required",
+                "Please select or create a Channel Profile before packaging a release.",
+            )
+            return
         project_id = self.current_project_id()
         if not project_id:
             QMessageBox.warning(self, "Production", "Please select a project first.")
@@ -1313,6 +1437,11 @@ class ProductionPage(QWidget):
             "vignette": self.chk_vintage.isChecked(),
         }
         try:
+            if hasattr(self, "stage_status_label"):
+                self.stage_status_label.setText("Running Pipeline: Validating → Mixing → Visuals → Rendering → Packaging…")
+            if hasattr(self, "stage_progress_bar"):
+                self.stage_progress_bar.setValue(35)
+            QApplication.processEvents()
             with session_scope() as session:
                 runner = ProductionJobRunner(session)
                 job = runner.enqueue_production_job(
@@ -1324,6 +1453,16 @@ class ProductionPage(QWidget):
                     output_name=clean_out_name,
                 )
                 summary = runner.run_job(job.id)
+                NLEExporterService(session).export_project_timeline(
+                    project_id,
+                    project_out_dir,
+                    output_name=clean_out_name,
+                    visual_asset_path=custom_vis,
+                )
+            if hasattr(self, "stage_status_label"):
+                self.stage_status_label.setText(f"Completed: {clean_out_name}.mp4 + NLE XML packaged!")
+            if hasattr(self, "stage_progress_bar"):
+                self.stage_progress_bar.setValue(100)
             self._reload_projects()
             QMessageBox.information(
                 self,
@@ -1331,11 +1470,43 @@ class ProductionPage(QWidget):
                 f"Project packaged successfully as '{clean_out_name}'!\n\n"
                 f"Output directory: {summary.output_dir}\n"
                 f"Video file: {Path(summary.output_dir) / f'{clean_out_name}.mp4'}\n"
+                f"NLE Timeline XML: {Path(summary.output_dir) / f'{clean_out_name}_timeline.fcpxml'}\n"
                 f"Manifest: {summary.manifest_path}\n"
                 f"Executed stages: {', '.join(summary.executed_stages)}",
             )
         except Exception as exc:
+            if hasattr(self, "stage_status_label"):
+                self.stage_status_label.setText("Pipeline Error — Check settings and try again")
             QMessageBox.critical(self, "Production Failed", str(exc))
+
+    def _on_export_nle_bundle(self) -> None:
+        project_id = self.current_project_id()
+        if not project_id:
+            QMessageBox.warning(self, "Export Timeline XML", "Please select a project first.")
+            return
+        base_out = self._resolve_and_save_output_base()
+        clean_out_name = self._resolve_clean_output_name(project_id)
+        out_dir = base_out / clean_out_name
+        custom_vis = self.selected_visual_asset_path()
+        try:
+            with session_scope() as session:
+                bundle = NLEExporterService(session).export_project_timeline(
+                    project_id,
+                    out_dir,
+                    output_name=clean_out_name,
+                    visual_asset_path=custom_vis,
+                )
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(bundle.output_dir)))
+            QMessageBox.information(
+                self,
+                "Timeline Exported for External Video Editor",
+                f"Exported {bundle.clip_count}-track timeline package to:\n  {bundle.output_dir}\n\n"
+                f"• FCPXML Timeline: {bundle.fcpxml_path.name}\n"
+                f"• CMX 3600 EDL: {bundle.edl_path.name}\n"
+                f"• CSV Clip List: {bundle.csv_clip_list_path.name}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Timeline XML Export Failed", str(exc))
 
     def _on_export_short_highlight(self) -> None:
         project_id = self.current_project_id()

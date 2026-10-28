@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 
 from youtube_studio.domain.models.project import ProjectType
 from youtube_studio.domain.services import ChannelService, ResearchService
+from youtube_studio.domain.services.autopilot_service import ExpressAutopilotService
 from youtube_studio.jobs import RetentionJobRunner
 from youtube_studio.mcp.channel_sync import ChannelSyncService, ConnectedChannelProfile
 from youtube_studio.mcp.client import MCPClientHub
@@ -113,6 +114,40 @@ class ResearchPage(QWidget):
         top_row.addWidget(purge_btn)
 
         root.addLayout(top_row)
+
+        # 🔗 YouTube Link -> Research Brief & 1-Click Auto-Pilot Bar
+        url_group = QGroupBox("🔗 YouTube Video URL → Research Brief, Chapters & 1-Click Project")
+        url_row = QHBoxLayout(url_group)
+        url_row.setContentsMargins(12, 8, 12, 8)
+        url_row.setSpacing(8)
+        url_row.addWidget(QLabel("Video URL:"))
+        self.url_import_input = QLineEdit()
+        self.url_import_input.setPlaceholderText(
+            "Paste YouTube Video URL or ID (e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ)…"
+        )
+        self.url_import_input.setToolTip(
+            "Paste any YouTube video URL to fetch public metadata (title, description, chapters, tags) "
+            "and save it as a structured Research Brief + Idea."
+        )
+        url_row.addWidget(self.url_import_input, stretch=1)
+
+        self.import_url_btn = QPushButton("📥 Import from Video URL → Brief && Idea")
+        self.import_url_btn.setObjectName("AccentButton")
+        self.import_url_btn.setToolTip(
+            "Fetch public video title, description, and 00:00 chapters and save as a Research Project Brief & Idea."
+        )
+        self.import_url_btn.clicked.connect(self._on_import_from_video_url)
+        url_row.addWidget(self.import_url_btn)
+
+        self.autopilot_url_btn = QPushButton("🚀 1-Click Project from URL (Auto-Pilot)")
+        self.autopilot_url_btn.setObjectName("PrimaryButton")
+        self.autopilot_url_btn.setToolTip(
+            "Import the YouTube URL into a Research Brief and immediately build a complete Production Project "
+            "(tracks, silence trim, harmonic sort, scored SEO title, script & thumbnail) in 1 click!"
+        )
+        self.autopilot_url_btn.clicked.connect(self._on_autopilot_from_url)
+        url_row.addWidget(self.autopilot_url_btn)
+        root.addWidget(url_group)
 
         # Main split: Left = Search + Topic Clustering, Right = Notes + Watchlist + Ideas
         body = QHBoxLayout()
@@ -253,6 +288,14 @@ class ResearchPage(QWidget):
         )
         handoff_btn.clicked.connect(self._on_handoff_to_production)
         idea_btns.addWidget(handoff_btn)
+
+        self.autopilot_idea_btn = QPushButton("🚀 1-Click Project from Idea")
+        self.autopilot_idea_btn.setObjectName("AccentButton")
+        self.autopilot_idea_btn.setToolTip(
+            "Convert the selected research idea into a fully populated, harmonic-sorted Production Project with SEO & Artwork in 1 click."
+        )
+        self.autopilot_idea_btn.clicked.connect(self._on_autopilot_from_idea)
+        idea_btns.addWidget(self.autopilot_idea_btn)
 
         ideas_layout.addLayout(idea_btns)
         right_col.addWidget(ideas_group, stretch=1)
@@ -610,6 +653,116 @@ class ResearchPage(QWidget):
             )
         except Exception as exc:
             QMessageBox.critical(self, "Hand-Off Failed", str(exc))
+
+    def _on_import_from_video_url(self) -> None:
+        url = self.url_import_input.text().strip()
+        if not url:
+            QMessageBox.warning(
+                self,
+                "Import from Video URL",
+                "Paste a YouTube video URL or video ID first.",
+            )
+            return
+        try:
+            with session_scope() as session:
+                ch_id = self.current_channel_id()
+                if not ch_id:
+                    ch_id, _, _ = ExpressAutopilotService(session).ensure_active_channel()
+                r_proj, source, idea = ResearchService(session).import_from_video_url(
+                    url,
+                    channel_id=ch_id,
+                    research_project_id=self.current_research_project_id(),
+                    yt_provider=self._yt_provider,
+                )
+            self._update_quota_label()
+            self.refresh()
+            if r_proj.id in self._research_project_ids:
+                self.project_combo.setCurrentIndex(self._research_project_ids.index(r_proj.id))
+                self._reload_project_details()
+            chapters = source.payload.get("chapters") or []
+            QMessageBox.information(
+                self,
+                "YouTube Video Imported to Research Brief",
+                f"Imported Video Brief:\n  {idea.title}\n\n"
+                f"Research Project: {r_proj.name}\n"
+                f"Extracted Chapters: {len(chapters)}\n"
+                f"Saved Idea: '{idea.title}' (ready for Production Hand-Off or 1-Click Auto-Pilot)",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Import from Video URL Failed", str(exc))
+
+    def _on_autopilot_from_url(self) -> None:
+        url = self.url_import_input.text().strip()
+        if not url:
+            QMessageBox.warning(
+                self,
+                "1-Click Project from URL",
+                "Paste a YouTube video URL or video ID first.",
+            )
+            return
+        try:
+            with session_scope() as session:
+                ap = ExpressAutopilotService(session)
+                res = ap.run_from_video_url(
+                    url,
+                    channel_id=self.current_channel_id(),
+                    research_project_id=self.current_research_project_id(),
+                    render_video=False,
+                )
+            self.refresh()
+            win = self.window()
+            pages = getattr(win, "pages", None)
+            if isinstance(pages, dict):
+                for key in ("production", "artwork", "dashboard"):
+                    p = pages.get(key)
+                    if p is not None and hasattr(p, "refresh"):
+                        try:
+                            p.refresh()
+                        except Exception:
+                            pass
+            QMessageBox.information(
+                self,
+                "🚀 1-Click Project from Research URL Complete!",
+                f"Created Production Project from YouTube URL:\n  '{res.project_name}' ({res.track_count} tracks)\n\n"
+                f"Highest-Scoring SEO Title:\n  {res.seo_title}\n"
+                f"  [{res.title_score_summary}]\n\n"
+                f"Thumbnail & NLE XML Prepared:\n  {res.output_dir}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "1-Click Project from URL Failed", str(exc))
+
+    def _on_autopilot_from_idea(self) -> None:
+        row = self.ideas_table.currentRow()
+        if row < 0 or row >= len(self._idea_ids):
+            QMessageBox.warning(self, "1-Click Project from Idea", "Select a saved idea first.")
+            return
+        idea_id = self._idea_ids[row]
+        try:
+            with session_scope() as session:
+                ap = ExpressAutopilotService(session)
+                ch_id, _, _ = ap.ensure_active_channel(self.current_channel_id())
+                prod_proj, _ = ResearchService(session).handoff_idea_to_production(
+                    idea_id,
+                    channel_id=ch_id,
+                )
+                res = ap.run_autopilot(
+                    channel_id=ch_id,
+                    project_id=prod_proj.id,
+                    project_name=prod_proj.name,
+                    output_name=prod_proj.name,
+                    render_video=False,
+                )
+            self._reload_project_details()
+            QMessageBox.information(
+                self,
+                "🚀 1-Click Project from Idea Ready!",
+                f"Built Production Project '{res.project_name}' ({res.track_count} tracks)!\n\n"
+                f"Highest-Scoring SEO Title:\n  {res.seo_title}\n"
+                f"  [{res.title_score_summary}]\n\n"
+                f"Switch to the Production or Artwork tab to review or render.",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "1-Click Project from Idea Failed", str(exc))
 
     def _on_purge_expired(self) -> None:
         try:

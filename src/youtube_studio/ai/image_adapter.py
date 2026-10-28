@@ -152,6 +152,8 @@ class ProceduralArtworkFallbackAdapter(ImageGenerationAdapter):
         subtitle: Optional[str] = None,
         badge_text: Optional[str] = None,
         seed: Optional[int] = None,
+        reference_image_path: Optional[Path] = None,
+        style_lock: bool = False,
     ) -> ImageGenerationResult:
         aspect = "9:16" if height > width else "16:9"
         spec = ThumbnailSpec(
@@ -163,6 +165,8 @@ class ProceduralArtworkFallbackAdapter(ImageGenerationAdapter):
             width=width,
             height=height,
             motif="vinyl_and_sound_system",
+            reference_image_path=reference_image_path,
+            style_lock=style_lock,
         )
         res = self._engine.render(spec, output_path)
         return ImageGenerationResult(
@@ -176,6 +180,8 @@ class ProceduralArtworkFallbackAdapter(ImageGenerationAdapter):
                 "prompt": prompt,
                 "palette": res.palette,
                 "seed": seed,
+                "reference_image_path": str(reference_image_path) if reference_image_path else None,
+                "style_lock": style_lock,
             },
         )
 
@@ -203,6 +209,8 @@ class ArtworkGenerator:
         subtitle: Optional[str] = None,
         badge_text: Optional[str] = None,
         seed: Optional[int] = None,
+        reference_image_path: Optional[Path] = None,
+        style_lock: bool = False,
     ) -> ImageGenerationResult:
         if self._primary.is_available():
             try:
@@ -218,6 +226,19 @@ class ArtworkGenerator:
                 )
             except Exception:
                 pass
+        if isinstance(self._fallback, ProceduralArtworkFallbackAdapter):
+            return self._fallback.generate_image(
+                prompt,
+                output_path,
+                width=width,
+                height=height,
+                style_palette=style_palette,
+                subtitle=subtitle,
+                badge_text=badge_text,
+                seed=seed,
+                reference_image_path=reference_image_path,
+                style_lock=style_lock,
+            )
         return self._fallback.generate_image(
             prompt,
             output_path,

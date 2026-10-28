@@ -9,6 +9,8 @@ from .metadata_generator import (
     GeneratedMetadataResult,
     MetadataGenerationRequest,
     MetadataGenerator,
+    ScriptDraftResult,
+    TitleCandidateScore,
 )
 from .text_adapter import (
     LlamaCppTextAdapter,
@@ -26,6 +28,8 @@ __all__ = [
     "MetadataGenerationRequest",
     "MetadataGenerator",
     "ProceduralArtworkFallbackAdapter",
+    "ScriptDraftResult",
     "TemplateFallbackTextAdapter",
     "TextGenerationAdapter",
+    "TitleCandidateScore",
 ]

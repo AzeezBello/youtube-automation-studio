@@ -411,6 +411,138 @@ class MCPHubAndScannerTests(unittest.TestCase):
         )
         self.assertEqual(clip.effective_duration_ms, 140_000)
 
+    def test_url_import_niche_presets_title_scoring_script_tts_ref_lock_and_nle_export(self) -> None:
+        from youtube_studio.ai import ArtworkGenerator, MetadataGenerationRequest, MetadataGenerator
+        from youtube_studio.domain.models.channel import (
+            NICHE_STYLE_PRESETS,
+            VOICE_LIBRARY_PRESETS,
+            apply_niche_preset_to_brand_config,
+        )
+        from youtube_studio.domain.services.autopilot_service import ExpressAutopilotService
+        from youtube_studio.domain.services.research_service import ResearchService
+        from youtube_studio.media.nle_exporter import NLEExporterService
+        from youtube_studio.media.tts_service import LocalTTSService
+        from youtube_studio.research.providers.youtube_api import (
+            extract_youtube_video_id,
+            parse_chapters_from_description,
+        )
+
+        # 1. YouTube URL ID extraction & chapter parsing
+        self.assertEqual(
+            extract_youtube_video_id("https://www.youtube.com/watch?v=dQw4w9WgXcQ&t=10s"),
+            "dQw4w9WgXcQ",
+        )
+        self.assertEqual(
+            extract_youtube_video_id("https://youtu.be/abc123XYZ89"),
+            "abc123XYZ89",
+        )
+        parsed_ch = parse_chapters_from_description("00:00 Opening Dub\n03:45 Heavy Steppers\n10:12 Outro")
+        self.assertEqual(len(parsed_ch), 3)
+        self.assertEqual(parsed_ch[1]["start_ms"], 225_000)
+
+        # 2. Niche / Style Presets & Voice Library
+        self.assertGreaterEqual(len(NICHE_STYLE_PRESETS), 5)
+        self.assertGreaterEqual(len(VOICE_LIBRARY_PRESETS), 5)
+        cfg = apply_niche_preset_to_brand_config("documentary_storytelling")
+        self.assertEqual(cfg.visual_style, "modern_clean")
+        self.assertEqual(cfg.target_duration_minutes, 15)
+
+        # 3. AI Title Options + Explainable Rule-Based Score + Hook -> Outline -> Full Script
+        meta_gen = MetadataGenerator()
+        req = MetadataGenerationRequest(
+            project_name="Echoes of Livity — Roots Reggae Documentary",
+            channel_name="Echoes of Livity",
+            brand_config=cfg,
+            keywords=["roots reggae", "dub history", "sound system"],
+            target_duration_minutes=15,
+            candidate_count=5,
+        )
+        meta_res = meta_gen.generate(req)
+        self.assertEqual(len(meta_res.title_candidates), 5)
+        self.assertEqual(len(meta_res.scored_candidates), 5)
+        self.assertIsNotNone(meta_res.highest_scoring_title)
+        assert meta_res.highest_scoring_title is not None
+        self.assertGreaterEqual(meta_res.highest_scoring_title.total_score, 60)
+        self.assertIn("Length", meta_res.highest_scoring_title.explanation)
+
+        script_res = meta_gen.generate_structured_script(
+            "Roots Reggae Sound System Culture",
+            channel_name="Echoes of Livity",
+            tone="documentary",
+            target_duration_minutes=15,
+        )
+        self.assertIn("OPENING HOOK", script_res.hook)
+        self.assertIn("Structured Outline", script_res.outline)
+        self.assertIn("FULL NARRATION", script_res.full_script)
+        self.assertGreaterEqual(len(script_res.extracted_chapters), 1)
+
+        # 4. Local AI Voiceover (TTS) synthesis
+        tts = LocalTTSService()
+        vo_out = self.root / "voiceover_test.wav"
+        vo_res = tts.synthesize(
+            script_res.hook,
+            vo_out,
+            preset_key="clear_female_storyteller",
+            speed=1.1,
+            prefer_os_tts=False,
+        )
+        self.assertTrue(vo_res.output_path.exists())
+        self.assertEqual(vo_res.gender, "female")
+        self.assertGreater(vo_res.duration_ms, 500)
+
+        # 5. Reference Image / Style Lock
+        ref_img = self.root / "ref_style.png"
+        art_gen = ArtworkGenerator()
+        art_gen.generate("Reference Base", ref_img, style_palette="midnight_dub")
+        locked_thumb = self.root / "locked_thumb.png"
+        locked_res = art_gen.generate(
+            "Style Locked Release",
+            locked_thumb,
+            style_palette="warm_earth",
+            reference_image_path=ref_img,
+            style_lock=True,
+        )
+        self.assertTrue(locked_res.output_path.exists())
+        self.assertTrue(locked_res.provenance.get("style_lock"))
+
+        # 6. 1-Click Project from YouTube URL + NLE Timeline Export (.fcpxml, .edl, .csv)
+        tracks_dir = self.root / "url_autopilot_tracks"
+        tracks_dir.mkdir(parents=True, exist_ok=True)
+        _write_test_wav(tracks_dir / "dub_cut_1.wav", freq_hz=220.0)
+        _write_test_wav(tracks_dir / "dub_cut_2.wav", freq_hz=330.0)
+
+        with self._session_scope() as session:
+            r_svc = ResearchService(session)
+            r_proj, r_src, idea = r_svc.import_from_video_url(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+            )
+            self.assertIn("dQw4w9WgXcQ", r_proj.brief or "")
+            self.assertTrue(idea.title)
+
+            ap = ExpressAutopilotService(session)
+            ap_res = ap.run_from_video_url(
+                "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+                source_folder=tracks_dir,
+                niche_preset="roots_reggae_mix",
+                output_name="URL_Autopilot_Session",
+                render_video=False,
+                output_base_dir=self.root / "url_exports",
+            )
+            self.assertEqual(ap_res.track_count, 2)
+            self.assertIsNotNone(ap_res.nle_fcpxml_path)
+            assert ap_res.nle_fcpxml_path is not None
+            self.assertTrue(ap_res.nle_fcpxml_path.exists())
+
+            nle_bundle = NLEExporterService(session).export_project_timeline(
+                ap_res.project_id,
+                self.root / "nle_handoff",
+                output_name="Studio_NLE_Export",
+            )
+            self.assertTrue(nle_bundle.fcpxml_path.exists())
+            self.assertTrue(nle_bundle.edl_path.exists())
+            self.assertTrue(nle_bundle.csv_clip_list_path.exists())
+            self.assertEqual(nle_bundle.clip_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()
