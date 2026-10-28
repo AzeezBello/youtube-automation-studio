@@ -5,6 +5,7 @@ from .media_service import MediaLibraryService
 from .model_registry_service import ModelRegistryService
 from .project_service import ProjectService
 from .research_service import ResearchService
+from .studio_facade import StudioFacade
 
 __all__ = [
     "ChannelService",
@@ -15,4 +16,5 @@ __all__ = [
     "ModelRegistryService",
     "ProjectService",
     "ResearchService",
+    "StudioFacade",
 ]

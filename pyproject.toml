@@ -45,10 +45,15 @@ ai = [
     # "diffusers",
     # "torch",
 ]
+saas = [
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+]
 
 [project.scripts]
 youtube-studio = "youtube_studio.main:main"
 youtube-studio-mcp = "youtube_studio.mcp.cli:main"
+youtube-studio-api = "youtube_studio.api.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
