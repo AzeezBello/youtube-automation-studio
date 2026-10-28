@@ -1,4 +1,4 @@
-"""Guided Product Tour banner that walks the user through all 7 workspaces."""
+"""Guided Product Tour banner that walks the user through all 9 studio workspaces."""
 
 from __future__ import annotations
 
@@ -28,23 +28,23 @@ class TourStop:
 PRODUCT_TOUR_STOPS: tuple[TourStop, ...] = (
     TourStop(
         nav_index=0,
-        title="1/7 · Dashboard — Command Center & Quick Actions",
+        title="1/9 · Dashboard — Command Center, New Project Hero & More Tools",
         summary=(
-            "Monitor active channels, indexed audio tracks, production projects, and FFmpeg/hardware readiness at a glance."
+            "Start a new project in 1 click, launch Video Studio or Design Studio, access AI tools, and view all saved projects."
         ),
-        pro_tip="Use the quick-launch buttons on the Dashboard to jump straight into scanning music or creating a mix project.",
+        pro_tip="Click the cyan '+ New project' banner or any tool tile under 'More tools' to jump straight into a workflow.",
     ),
     TourStop(
         nav_index=1,
-        title="2/7 · Research Workspace — Topic Discovery & Hand-Off",
+        title="2/9 · Research Workspace — YouTube URL Briefs & Topic Discovery",
         summary=(
-            "Search keywords offline or via YouTube Data API v3, group results into TF-IDF topic clusters, and track public watchlists."
+            "Paste any YouTube video URL to import public metadata and chapters into a Research Brief, or search keywords and cluster topics."
         ),
-        pro_tip="Select any promising topic and click 'Hand Off to Production →' to automatically create a project with pre-filled metadata.",
+        pro_tip="Click '🚀 1-Click Auto-Pilot from URL' to turn any reference video URL into a complete studio project automatically.",
     ),
     TourStop(
         nav_index=2,
-        title="3/7 · Music Library — Audio Scanner, BPM & Camelot Keys",
+        title="3/9 · Music Library — Audio Scanner, BPM & Camelot Keys",
         summary=(
             "Recursively scan folders for WAV, MP3, FLAC, M4A, AAC, OGG, AIFF, and OPUS audio files. Extracts duration, BPM, Camelot key, and SHA-256 duplicates."
         ),
@@ -52,31 +52,47 @@ PRODUCT_TOUR_STOPS: tuple[TourStop, ...] = (
     ),
     TourStop(
         nav_index=3,
-        title="4/7 · Production Studio — Harmonic Mixing, Visualizers & Shorts",
+        title="4/9 · Script & Voiceover Studio — Hook → Outline → Full Script + Local TTS",
         summary=(
-            "Build single-track or multi-track timelines with Auto-Cue Silence Trim, Smart Harmonic Sort, Bass-Swap EQ transitions, and audio-reactive visualizers."
+            "Draft structured scripts in 3 steps (Hook, Timestamped Outline, Full Narration), upload .txt/.md/.srt files, and synthesize Male/Female voiceovers."
         ),
-        pro_tip="Enable 'Dynamic Now Playing Overlay' to generate both burned-in track titles and an external .srt subtitle file, or click 'Export 9:16 Short' for vertical highlights.",
+        pro_tip="Use the Voice Library table to audition Male or Female presets with custom speed (0.50x–2.00x) and append voiceovers directly to your timeline.",
     ),
     TourStop(
         nav_index=4,
-        title="5/7 · Artwork & Local AI — Thumbnails & SEO Metadata",
+        title="5/9 · Production Studio — 1-Click Auto-Pilot, Harmonic Mixing & Shorts",
         summary=(
-            "Generate 3 title candidates, timestamped chapter descriptions, tags, and 16:9 / 9:16 thumbnails using local AI models or procedural brand palettes."
+            "Build single-track or multi-track timelines with Auto-Cue Silence Trim, Smart Harmonic Sort, Bass-Swap EQ transitions, and audio-reactive visualizers."
         ),
-        pro_tip="Register optional .gguf language models here, or rely on the zero-dependency procedural fallback engine on any hardware.",
+        pro_tip="Set a custom Output Name and Niche Style Preset, or click '🚀 1-Click Auto-Produce Full Video + Short' for hands-free production.",
     ),
     TourStop(
         nav_index=5,
-        title="6/7 · MCP Hub — Bidirectional Model Context Protocol",
+        title="6/9 · Timeline Editor — 4-Pane Pro Video Stage, Inspector & EditPilot",
+        summary=(
+            "Browse Media/Audio/Text/Effects/Transitions/Filters on the left, preview on the 16:9 or 9:16 Player stage, inspect clip trims on the right, and scrub the multi-track timeline."
+        ),
+        pro_tip="Click '✦ EditPilot' in the timeline bar to auto-load and harmonic-sort tracks, or click '↗ Export' to save .fcpxml, .edl, and .csv clip lists.",
+    ),
+    TourStop(
+        nav_index=6,
+        title="7/9 · Artwork & SEO — Explainable Title Scorer, Style Lock & Thumbnails",
+        summary=(
+            "Generate 5 ranked title candidates with transparent criteria (Length, Keywords, Tone), chapter descriptions, and 16:9 / 9:16 thumbnails with Reference Image Style Lock."
+        ),
+        pro_tip="Lock your channel's color palette and backdrop blend to any reference image using the '🔒 Style Lock' checkbox.",
+    ),
+    TourStop(
+        nav_index=7,
+        title="8/9 · MCP Hub — Bidirectional Model Context Protocol",
         summary=(
             "Expose Studio's 10 tools, 4 studio:// resources, and 2 prompt templates to external AI clients, or connect external stdio/HTTP MCP servers."
         ),
         pro_tip="Use the interactive Tool Playground to test any MCP tool directly from the GUI, or copy the JSON-RPC config snippet for Claude Desktop / Cursor.",
     ),
     TourStop(
-        nav_index=6,
-        title="7/7 · Settings, Snapshots & Compliance Gate",
+        nav_index=8,
+        title="9/9 · Settings, Snapshots & Compliance Gate",
         summary=(
             "Manage your Credential Vault API key, create SHA-256 verified SQLite backup snapshots, and run the Pre-Release Compliance Review Gate."
         ),

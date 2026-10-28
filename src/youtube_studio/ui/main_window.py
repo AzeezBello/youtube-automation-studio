@@ -5,13 +5,14 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QFont, QResizeEvent
+from PySide6.QtGui import QAction, QFont, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QBoxLayout,
     QFrame,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QListView,
     QListWidget,
@@ -21,6 +22,8 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -31,6 +34,7 @@ from youtube_studio.domain.services import ChannelService, MediaLibraryService, 
 from youtube_studio.media import FFmpegService
 from youtube_studio.storage import session_scope
 from youtube_studio.ui.artwork_page import ArtworkPage
+from youtube_studio.ui.brand_assets import BrandAssetsService
 from youtube_studio.ui.components import EmptyStateWidget, MetricCard
 from youtube_studio.ui.mcp_page import MCPHubPage
 from youtube_studio.ui.music_library_page import MusicLibraryPage
@@ -43,8 +47,10 @@ from youtube_studio.ui.responsive import (
     apply_responsive_mode_to_page,
     wrap_in_responsive_scroll,
 )
+from youtube_studio.ui.script_voice_page import ScriptVoicePage
 from youtube_studio.ui.settings_page import SettingsPage
-from youtube_studio.ui.theme import DARK_STUDIO_STYLESHEET, ThemeManager
+from youtube_studio.ui.theme import ThemeManager
+from youtube_studio.ui.timeline_editor import TimelineEditorPage
 
 
 class PlaceholderPage(QWidget):
@@ -62,7 +68,7 @@ class PlaceholderPage(QWidget):
 
 
 class DashboardPage(QWidget):
-    """Command center dashboard with KPI cards, empty-state onboarding guide, and quick actions."""
+    """Home Command Center with Cyan '+ New project' Hero Banner, Video/Design Studio Cards, More Tools & Projects."""
 
     def __init__(
         self,
@@ -76,23 +82,108 @@ class DashboardPage(QWidget):
         self._on_navigate = on_navigate
         self._on_open_onboarding = on_open_onboarding
         self._on_start_tour = on_start_tour
+        self._project_ids: list[str] = []
         self._build_ui()
         self.refresh()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 18)
-        layout.setSpacing(14)
+        layout.setContentsMargins(18, 16, 18, 16)
+        layout.setSpacing(12)
 
-        heading = QLabel("Studio Command Center")
-        heading.setFont(QFont("", 20, QFont.Weight.Bold))
-        layout.addWidget(heading)
+        # Brand Hero Strip
+        top_brand_row = QHBoxLayout()
+        self.hero_logo_label = QLabel()
+        hero_pix = QPixmap.fromImage(BrandAssetsService.render_horizontal_logo_image(520, 104))
+        self.hero_logo_label.setPixmap(hero_pix)
+        self.hero_logo_label.setFixedHeight(78)
+        self.hero_logo_label.setScaledContents(False)
+        top_brand_row.addWidget(self.hero_logo_label)
+        top_brand_row.addStretch(1)
+        layout.addLayout(top_brand_row)
 
-        subtitle = QLabel(
-            "Local-first multi-channel YouTube research, harmonic mixing, reactive video production, and compliance studio."
+        # Studio Hero Banner Row (Inspired by Modern Video Studio Home: '+ New project' Cyan Gradient + Studio Cards)
+        hero_cards_row = QHBoxLayout()
+        hero_cards_row.setSpacing(12)
+
+        self.btn_hero_new_project = QPushButton("＋  New project\nCreate 16:9 Mix, Narrated Episode or 9:16 Short")
+        self.btn_hero_new_project.setMinimumHeight(112)
+        self.btn_hero_new_project.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_hero_new_project.setStyleSheet(
+            "QPushButton { "
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #67e8f9, stop:0.5 #06b6d4, stop:1 #0284c7); "
+            "color: #042f2e; font-size: 16px; font-weight: bold; border-radius: 12px; border: none; padding: 18px; "
+            "} "
+            "QPushButton:hover { "
+            "background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #a5f3fc, stop:0.5 #22d3ee, stop:1 #0369a1); "
+            "}"
         )
-        subtitle.setStyleSheet("color: #94a3b8;")
-        layout.addWidget(subtitle)
+        self.btn_hero_new_project.setToolTip(
+            "Launch the 4-Pane Timeline & Video Studio to create or edit a project."
+        )
+        self.btn_hero_new_project.clicked.connect(lambda: self._nav(5))
+        hero_cards_row.addWidget(self.btn_hero_new_project, stretch=3)
+
+        right_hero_col = QVBoxLayout()
+        right_hero_col.setSpacing(8)
+
+        btn_video_studio = QPushButton("🎬  Video Studio  ·  Multi-Track Timeline & Player")
+        btn_video_studio.setMinimumHeight(52)
+        btn_video_studio.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_video_studio.setStyleSheet(
+            "QPushButton { background-color: #163042; color: #e0f2fe; font-size: 13px; font-weight: bold; "
+            "border: 1px solid #0284c7; border-radius: 10px; padding: 10px 14px; text-align: left; } "
+            "QPushButton:hover { background-color: #0c4a6e; }"
+        )
+        btn_video_studio.setToolTip("Open the 4-Pane Timeline Editor (Media Browser | Player | Details | Multi-Track Timeline).")
+        btn_video_studio.clicked.connect(lambda: self._nav(5))
+        right_hero_col.addWidget(btn_video_studio)
+
+        btn_design_studio = QPushButton("🎨  Design Studio [New]  ·  Thumbnails, Style Lock & Ranked Titles")
+        btn_design_studio.setMinimumHeight(52)
+        btn_design_studio.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_design_studio.setStyleSheet(
+            "QPushButton { background-color: #1e1b4b; color: #e0e7ff; font-size: 13px; font-weight: bold; "
+            "border: 1px solid #4f46e5; border-radius: 10px; padding: 10px 14px; text-align: left; } "
+            "QPushButton:hover { background-color: #312e81; }"
+        )
+        btn_design_studio.setToolTip("Open Artwork & SEO Studio for 16:9 / 9:16 thumbnails, Style Lock, and Explainable Title Scoring.")
+        btn_design_studio.clicked.connect(lambda: self._nav(6))
+        right_hero_col.addWidget(btn_design_studio)
+
+        hero_cards_row.addLayout(right_hero_col, stretch=2)
+        layout.addLayout(hero_cards_row)
+
+        # More Tools Icon Bar (6 Specialized Tool Tiles with AI Badges)
+        tools_hdr = QLabel("<b>More tools</b>")
+        tools_hdr.setStyleSheet("color: #f8fafc; font-size: 14px;")
+        layout.addWidget(tools_hdr)
+
+        tools_row = QHBoxLayout()
+        tools_row.setSpacing(10)
+
+        tool_specs = [
+            ("🔗 URL to Brief", "Import YouTube URL metadata & chapters into a Research Brief.", 1),
+            ("✂️ Long video to shorts", "Auto-clip peak 30s 9:16 vertical Shorts.", 4),
+            ("✍️ AI Script & Hook", "Draft 1. Hook → 2. Outline → 3. Full Narration Script.", 3),
+            ("🎙 AI Voiceover [AI]", "Synthesize local Male/Female voiceovers with speed control.", 3),
+            ("🏆 Title Scorer [AI]", "Rank 5 title candidates by transparent length, keyword & tone rules.", 6),
+            ("🚀 1-Click Auto-Video [AI]", "End-to-end autopilot from audio folder or YouTube URL.", 4),
+        ]
+        for label_txt, tip_txt, target_idx in tool_specs:
+            btn = QPushButton(label_txt)
+            btn.setMinimumHeight(46)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setToolTip(tip_txt)
+            btn.setStyleSheet(
+                "QPushButton { background-color: #141824; color: #e2e8f0; border: 1px solid #262f45; "
+                "border-radius: 10px; padding: 8px 10px; font-weight: 600; font-size: 12px; } "
+                "QPushButton:hover { border-color: #06b6d4; color: #22d3ee; background-color: #192132; }"
+            )
+            btn.clicked.connect(lambda _checked=False, idx=target_idx: self._nav(idx))
+            tools_row.addWidget(btn, stretch=1)
+
+        layout.addLayout(tools_row)
 
         # KPI Metric Cards Row
         cards_row = QHBoxLayout()
@@ -126,68 +217,44 @@ class DashboardPage(QWidget):
         cards_row.addWidget(self.card_engine)
         layout.addLayout(cards_row)
 
-        # Empty State Guide (shown when no channels or projects exist yet)
+        # Projects Section (Live Saved Projects Table + Empty State Guide)
+        proj_group = QGroupBox("Projects  (Project edited will be saved automatically)")
+        proj_layout = QVBoxLayout(proj_group)
+
         self.empty_state = EmptyStateWidget(
-            title="Welcome to Your Studio — Let's Set Up Your First Release",
+            title="Project edited will be saved automatically. Start creating your own videos!",
             description=(
-                "You haven't created a channel or production project yet. Follow the step-by-step Onboarding Flow "
-                "or take the Guided Product Tour to explore every workspace."
+                "Click '+ New project' above, launch the Onboarding Wizard, or take the 9-step Guided Product Tour."
             ),
             tips=[
                 "<b>Step 1 — Onboarding Flow:</b> Create your first channel brand profile and configure your resource profile.",
-                "<b>Step 2 — Scan Music Library:</b> Index a local folder of WAV/MP3/FLAC tracks to extract BPM & Camelot keys.",
-                "<b>Step 3 — Produce & Package:</b> Sequence a mix in Production, generate 16:9 artwork, and audit via the Compliance Gate.",
+                "<b>Step 2 — Script & Voiceover Studio:</b> Draft Hook → Outline → Full Script and synthesize Male/Female voiceover.",
+                "<b>Step 3 — Timeline & Video Studio:</b> Arrange clips on the 4-pane timeline, preview on the stage, and export.",
             ],
             action_label="Open Step-by-Step Onboarding",
             action_tooltip="Launch the 4-step Onboarding Wizard to set up your first channel and preferences.",
             on_action=lambda: self._on_open_onboarding() if self._on_open_onboarding else None,
             secondary_label="Start Guided Product Tour",
-            secondary_tooltip="Take an interactive 7-step tour of all studio workspaces.",
+            secondary_tooltip="Take an interactive 9-step tour of all studio workspaces.",
             on_secondary=lambda: self._on_start_tour() if self._on_start_tour else None,
         )
-        layout.addWidget(self.empty_state)
+        proj_layout.addWidget(self.empty_state)
 
-        # Quick Actions Bar (2 rows of 3 buttons so it never overflows horizontally)
-        quick_group = QGroupBox("Quick Workflow Actions")
-        quick_outer = QVBoxLayout(quick_group)
-        quick_outer.setSpacing(8)
-        quick_row_top = QHBoxLayout()
-        quick_row_bottom = QHBoxLayout()
+        self.projects_table = QTableWidget(0, 4)
+        self.projects_table.setAlternatingRowColors(True)
+        self.projects_table.verticalHeader().setVisible(False)
+        self.projects_table.setMaximumHeight(160)
+        self.projects_table.setHorizontalHeaderLabels(["Project Name", "Format", "Status", "Open in Studio"])
+        self.projects_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.projects_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.projects_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.projects_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self.projects_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.projects_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.projects_table.itemDoubleClicked.connect(lambda _: self._nav(5))
+        proj_layout.addWidget(self.projects_table)
 
-        btn_research = QPushButton("1. Discover Topics (Research)")
-        btn_research.setToolTip("Open Research Workspace to search keywords, cluster topics, and save video ideas.")
-        btn_research.clicked.connect(lambda: self._nav(1))
-        quick_row_top.addWidget(btn_research)
-
-        btn_library = QPushButton("2. Scan Audio (Music Library)")
-        btn_library.setToolTip("Open Music Library to scan folders and analyze track BPM & Camelot keys.")
-        btn_library.clicked.connect(lambda: self._nav(2))
-        quick_row_top.addWidget(btn_library)
-
-        btn_produce = QPushButton("3. Build Mix && Video (Production)")
-        btn_produce.setObjectName("PrimaryButton")
-        btn_produce.setToolTip("Open Production Studio to sequence tracks, configure visualizers, and render videos.")
-        btn_produce.clicked.connect(lambda: self._nav(3))
-        quick_row_top.addWidget(btn_produce)
-
-        btn_artwork = QPushButton("4. Generate Artwork && SEO (AI Studio)")
-        btn_artwork.setToolTip("Open Artwork & Local AI Studio to generate 16:9 / 9:16 thumbnails and metadata.")
-        btn_artwork.clicked.connect(lambda: self._nav(4))
-        quick_row_bottom.addWidget(btn_artwork)
-
-        btn_mcp = QPushButton("5. Connect MCP (vidIQ && AI)")
-        btn_mcp.setToolTip("Open MCP Hub to connect preconfigured vidIQ, TubeBuddy, Suno, or external MCP servers.")
-        btn_mcp.clicked.connect(lambda: self._nav(5))
-        quick_row_bottom.addWidget(btn_mcp)
-
-        btn_settings = QPushButton("6. Backup && Compliance Gate")
-        btn_settings.setToolTip("Open Settings to manage API credentials, create DB snapshots, and audit export manifests.")
-        btn_settings.clicked.connect(lambda: self._nav(6))
-        quick_row_bottom.addWidget(btn_settings)
-
-        quick_outer.addLayout(quick_row_top)
-        quick_outer.addLayout(quick_row_bottom)
-        layout.addWidget(quick_group)
+        layout.addWidget(proj_group)
 
         # Detailed Status Box
         status_group = QGroupBox("System Environment & Database Diagnostics")
@@ -259,6 +326,16 @@ class DashboardPage(QWidget):
             )
             if hasattr(self, "empty_state"):
                 self.empty_state.setVisible(len(channels) == 0 or len(projects) == 0)
+
+            self.projects_table.setRowCount(len(projects))
+            self._project_ids = []
+            for idx, p in enumerate(projects):
+                self._project_ids.append(p.id)
+                self.projects_table.setItem(idx, 0, QTableWidgetItem(p.name))
+                self.projects_table.setItem(idx, 1, QTableWidgetItem(p.project_type.value))
+                self.projects_table.setItem(idx, 2, QTableWidgetItem(p.status.value))
+                self.projects_table.setItem(idx, 3, QTableWidgetItem("🎬 Double-click to Edit"))
+            self.projects_table.setVisible(len(projects) > 0)
         except Exception as exc:
             lines.append(f"<b>Database:</b> <span style='color:#e74c3c'>{exc}</span>")
 
@@ -267,11 +344,13 @@ class DashboardPage(QWidget):
 
 class MainWindow(QMainWindow):
     NAV_ITEMS = [
-        ("Dashboard", "dashboard", "Overview of channels, media library, projects, and quick actions."),
-        ("Research", "research", "Keyword discovery, topic clustering, watchlists, and production hand-off."),
+        ("Dashboard", "dashboard", "Home hub with New Project launcher, More Tools, KPIs, and saved projects."),
+        ("Research", "research", "YouTube URL to Research Brief importer, keyword discovery, and topic clustering."),
         ("Music Library", "music_library", "Scan local audio folders, inspect BPM & Camelot keys, and find duplicates."),
-        ("Production", "production", "Build harmonic mixes, apply transitions & visualizers, and render videos/Shorts."),
-        ("Artwork", "artwork", "Generate 16:9 / 9:16 thumbnails and SEO metadata with local AI or templates."),
+        ("Script & Voice", "script_voice", "3-step Script Builder (Hook → Outline → Full Script), file upload, and Local TTS Voiceover Studio."),
+        ("Production", "production", "1-Click Express Auto-Pilot, harmonic mixing, visualizers, and video/Shorts rendering."),
+        ("Timeline Editor", "timeline_editor", "4-pane nonlinear video & audio editor: Media/Effects browser, Player stage, Details inspector & Timeline."),
+        ("Artwork", "artwork", "Explainable 5-Title Scorer, Reference Image Style Lock, and 16:9 / 9:16 thumbnail generator."),
         ("MCP Hub", "mcp_hub", "Connect AI agents via the built-in Studio MCP Server or manage external MCP servers."),
         ("Settings", "settings", "Manage Credential Vault API keys, SQLite snapshots, and Compliance Review Gate."),
     ]
@@ -280,6 +359,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         settings = get_settings()
         self.setWindowTitle(f"{settings.app_name} v{__version__}")
+        try:
+            self.setWindowIcon(BrandAssetsService.get_app_icon())
+        except Exception:
+            pass
         self._is_mobile_mode: Optional[bool] = None
         self.setMinimumSize(360, 500)
         self._build_ui()
@@ -299,14 +382,14 @@ class MainWindow(QMainWindow):
         screen = QApplication.primaryScreen()
         if screen is not None:
             avail = screen.availableGeometry()
-            target_w = min(1120, max(380, int(avail.width() * 0.88)))
-            target_h = min(680, max(500, int(avail.height() * 0.85)))
+            target_w = min(1160, max(380, int(avail.width() * 0.90)))
+            target_h = min(720, max(500, int(avail.height() * 0.86)))
             self.resize(target_w, target_h)
             x = avail.x() + max(0, (avail.width() - target_w) // 2)
             y = avail.y() + max(0, (avail.height() - target_h) // 2)
             self.move(x, y)
         else:
-            self.resize(1040, 660)
+            self.resize(1100, 680)
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -316,7 +399,7 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Top Header Bar with Hamburger Menu, Responsive Viewport Switcher, Onboarding & Product Tour controls
+        # Top Header Bar with Hamburger Menu, Brand Emblem, Theme Switcher, Onboarding & Product Tour controls
         header = QFrame()
         header.setObjectName("TopHeaderBar")
         header_layout = QHBoxLayout(header)
@@ -329,7 +412,13 @@ class MainWindow(QMainWindow):
         self.btn_menu_toggle.clicked.connect(self._toggle_nav_visibility)
         header_layout.addWidget(self.btn_menu_toggle)
 
-        self.brand_title = QLabel("🎬  YouTube Automation Studio")
+        self.brand_icon_label = QLabel()
+        self.brand_icon_label.setPixmap(BrandAssetsService.get_header_icon_pixmap(28))
+        self.brand_icon_label.setFixedSize(28, 28)
+        self.brand_icon_label.setToolTip("YouTube Automation Studio — Official App Emblem")
+        header_layout.addWidget(self.brand_icon_label)
+
+        self.brand_title = QLabel("YouTube Automation Studio")
         self.brand_title.setFont(QFont("", 14, QFont.Weight.Bold))
         self.brand_title.setStyleSheet("color: #f8fafc;")
         header_layout.addWidget(self.brand_title)
@@ -354,7 +443,7 @@ class MainWindow(QMainWindow):
         self.btn_tour = QPushButton("🧭 Start Product Tour")
         self.btn_tour.setObjectName("PrimaryButton")
         self.btn_tour.setToolTip(
-            "Launch the interactive 7-step Guided Product Tour across all studio workspaces."
+            "Launch the interactive 9-step Guided Product Tour across all studio workspaces."
         )
         self.btn_tour.clicked.connect(self.start_product_tour)
         header_layout.addWidget(self.btn_tour)
@@ -371,7 +460,7 @@ class MainWindow(QMainWindow):
         self.nav.setObjectName("SideNav")
         self.nav.setFixedWidth(190)
         self.nav.setSpacing(3)
-        self.nav.setToolTip("Switch between the 7 studio workspaces.")
+        self.nav.setToolTip("Switch between the 9 studio workspaces.")
         for label, _, tip in self.NAV_ITEMS:
             item = QListWidgetItem(label)
             item.setToolTip(tip)
@@ -403,7 +492,9 @@ class MainWindow(QMainWindow):
             ),
             "research": ResearchPage(),
             "music_library": MusicLibraryPage(),
+            "script_voice": ScriptVoicePage(),
             "production": ProductionPage(),
+            "timeline_editor": TimelineEditorPage(),
             "artwork": ArtworkPage(),
             "mcp_hub": MCPHubPage(),
             "settings": SettingsPage(),
@@ -411,8 +502,8 @@ class MainWindow(QMainWindow):
         for _, key, _ in self.NAV_ITEMS:
             scroll_wrapper = wrap_in_responsive_scroll(self.pages[key], parent=self.stack)
             self.stack.addWidget(scroll_wrapper)
-        # Ensure Dashboard & Research reflect any channel synced by MCPHubPage on launch
-        for key in ("dashboard", "research", "production", "artwork"):
+        # Ensure all workspace pages reflect any channel synced by MCPHubPage on launch
+        for key in ("dashboard", "research", "script_voice", "production", "timeline_editor", "artwork"):
             page = self.pages.get(key)
             if page is not None and hasattr(page, "refresh"):
                 page.refresh()
@@ -444,7 +535,7 @@ class MainWindow(QMainWindow):
             self.nav.setMaximumWidth(16777215)
             self.nav.setFixedHeight(48)
             self.version_badge.setVisible(False)
-            self.brand_title.setText("🎬 YT Studio")
+            self.brand_title.setText("YT Studio")
             self.btn_onboarding.setText("✦ Setup")
             self.btn_tour.setText("🧭 Tour")
         else:
@@ -456,7 +547,7 @@ class MainWindow(QMainWindow):
             self.nav.setMinimumHeight(0)
             self.nav.setMaximumHeight(16777215)
             self.version_badge.setVisible(True)
-            self.brand_title.setText("🎬  YouTube Automation Studio")
+            self.brand_title.setText("YouTube Automation Studio")
             self.btn_onboarding.setText("✦ Onboarding Setup")
             self.btn_tour.setText("🧭 Start Product Tour")
 

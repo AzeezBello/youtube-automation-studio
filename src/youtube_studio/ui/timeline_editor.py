@@ -1053,3 +1053,1120 @@ class TimelineCanvasEditorDialog(QDialog):
         if self._on_saved:
             self._on_saved()
         self.accept()
+
+
+class TimelineEditorPage(QWidget):
+    """Dedicated 4-Pane Pro Video & Audio Timeline Editor workspace (Asset Browser | Player | Details | Timeline Dock)."""
+
+    def __init__(self, parent: Optional[QWidget] = None) -> None:
+        super().__init__(parent)
+        self._channel_ids: list[str] = []
+        self._project_ids: list[str] = []
+        self._clips: list[TimelineClipItem] = []
+        self._visual_asset_path: Optional[Path] = None
+        self._visualizer_style: str = "bar_spectrum"
+        self._active_playing_clip_idx: Optional[int] = None
+
+        self._audio_output = QAudioOutput(self)
+        self._audio_output.setVolume(0.85)
+        self._player = QMediaPlayer(self)
+        self._player.setAudioOutput(self._audio_output)
+        self._player.positionChanged.connect(self._on_media_position_changed)
+
+        self._build_ui()
+        self.refresh()
+
+    def _build_ui(self) -> None:
+        from PySide6.QtWidgets import (
+            QCheckBox,
+            QFrame,
+            QListWidget,
+            QListWidgetItem,
+            QMessageBox,
+            QTabWidget,
+        )
+        from youtube_studio.config import get_settings
+        from youtube_studio.domain.models.channel import NICHE_STYLE_PRESETS
+        from youtube_studio.media.renderer import VisualizerStyle
+        from youtube_studio.ui.components import EmptyStateWidget
+
+        root = QVBoxLayout(self)
+        root.setContentsMargins(12, 10, 12, 10)
+        root.setSpacing(8)
+
+        # Top Pro Studio Bar: Auto-saved | Channel & Project Title | Ratio | Pro Badge | Export Button
+        top_bar = QFrame()
+        top_bar.setStyleSheet(
+            "QFrame { background-color: #111520; border: 1px solid #1e293b; border-radius: 8px; }"
+        )
+        tb_layout = QHBoxLayout(top_bar)
+        tb_layout.setContentsMargins(12, 6, 12, 6)
+        tb_layout.setSpacing(8)
+
+        self.lbl_autosave = QLabel("● Auto saved: Ready")
+        self.lbl_autosave.setStyleSheet("color: #64748b; font-size: 11px; border: none;")
+        tb_layout.addWidget(self.lbl_autosave)
+
+        tb_layout.addWidget(QLabel("Channel:"))
+        self.channel_combo = QComboBox()
+        self.channel_combo.setMinimumWidth(140)
+        self.channel_combo.setToolTip("Select the active YouTube channel profile.")
+        self.channel_combo.currentIndexChanged.connect(self._on_channel_changed)
+        tb_layout.addWidget(self.channel_combo)
+
+        tb_layout.addWidget(QLabel("Project:"))
+        self.project_combo = QComboBox()
+        self.project_combo.setMinimumWidth(180)
+        self.project_combo.setToolTip("Select the production project to edit on the multi-track timeline.")
+        self.project_combo.currentIndexChanged.connect(self._on_project_changed)
+        tb_layout.addWidget(self.project_combo)
+
+        tb_layout.addStretch(1)
+
+        self.aspect_combo = QComboBox()
+        self.aspect_combo.addItems(["16:9 Widescreen", "9:16 Vertical Short"])
+        self.aspect_combo.setToolTip("Switch the Player stage monitor between 16:9 YouTube and 9:16 Vertical Short.")
+        self.aspect_combo.currentIndexChanged.connect(self._sync_stage_canvas)
+        tb_layout.addWidget(self.aspect_combo)
+
+        pro_badge = QLabel("💎 Local Pro")
+        pro_badge.setStyleSheet(
+            "background-color: #1e1b4b; color: #c4b5fd; padding: 4px 10px; "
+            "border-radius: 6px; font-size: 11px; font-weight: bold; border: 1px solid #4338ca;"
+        )
+        tb_layout.addWidget(pro_badge)
+
+        self.btn_export_top = QPushButton("↗ Export")
+        self.btn_export_top.setStyleSheet(
+            "QPushButton { background-color: #06b6d4; color: #042f2e; font-weight: bold; "
+            "padding: 5px 14px; border-radius: 6px; border: none; } "
+            "QPushButton:hover { background-color: #22d3ee; }"
+        )
+        self.btn_export_top.setToolTip(
+            "Export timeline XML (.fcpxml), EDL (.edl), and CSV clip list or run full video export."
+        )
+        self.btn_export_top.clicked.connect(self._on_export_timeline_package)
+        tb_layout.addWidget(self.btn_export_top)
+
+        root.addWidget(top_bar)
+
+        # Empty State Widget (shown when no clips exist in the current project)
+        self.empty_state = EmptyStateWidget(
+            title="Timeline Empty — Import Media or Launch EditPilot",
+            description=(
+                "Import audio tracks, images, or video loops from the left Media browser, "
+                "or click '✦ EditPilot' to auto-populate and harmonic-sort your timeline."
+            ),
+            tips=[
+                "<b>4-Pane Studio Layout:</b> Left = Media/Audio/Text/Effects/Transitions/Filters browser; Center = Live Player; Right = Details & Clip Inspector; Bottom = Multi-Track Timeline.",
+                "<b>Precision Trim Handles:</b> Drag the yellow left/right handles on any timeline clip or click 'Set In / Set Out at Playhead'.",
+                "<b>AI Clipper & Export:</b> Extract peak 30s 9:16 Shorts or export .fcpxml / .edl / .csv timelines.",
+            ],
+            action_label="✦ EditPilot: Auto-Load Library Tracks",
+            action_tooltip="Automatically load indexed audio tracks, trim silence, and harmonic-sort by BPM & Key.",
+            on_action=self._on_editpilot_autoload,
+            secondary_label="⊕ Import Media Files…",
+            secondary_tooltip="Import audio, image, or video files into your project.",
+            on_secondary=self._on_import_media_dialog,
+        )
+        root.addWidget(self.empty_state)
+
+        # Upper 3-Pane Split: Left = Tabbed Asset/FX Browser | Center = Player | Right = Details & Inspector
+        upper_row = QHBoxLayout()
+        upper_row.setSpacing(8)
+
+        # 1. Left Pane: Media | Audio | Text | Effects | Transitions | Filters
+        left_frame = QFrame()
+        left_frame.setStyleSheet(
+            "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 8px; }"
+        )
+        left_layout = QVBoxLayout(left_frame)
+        left_layout.setContentsMargins(8, 8, 8, 8)
+        left_layout.setSpacing(6)
+
+        self.asset_tabs = QTabWidget()
+        self.asset_tabs.setToolTip("Browse Media, Audio, Text overlays, Visualizer Effects, Transitions, and Style Filters.")
+
+        # Tab 1: Media (with left sub-categories + Import dropzone + Generate/Voiceover tiles + AI Clipper bar)
+        media_tab = QWidget()
+        media_tab_layout = QVBoxLayout(media_tab)
+        media_tab_layout.setContentsMargins(4, 4, 4, 4)
+        media_tab_layout.setSpacing(6)
+
+        media_split = QHBoxLayout()
+        self.media_subnav = QListWidget()
+        self.media_subnav.setFixedWidth(92)
+        for cat in ("Import", "Favorites", "My presets", "Brand assets", "Generate AI", "Library"):
+            self.media_subnav.addItem(QListWidgetItem(cat))
+        self.media_subnav.setCurrentRow(0)
+        media_split.addWidget(self.media_subnav)
+
+        media_right = QVBoxLayout()
+        self.btn_import_dropzone = QPushButton("⊕ Import\nVideos, photos, and audio files")
+        self.btn_import_dropzone.setMinimumHeight(64)
+        self.btn_import_dropzone.setStyleSheet(
+            "QPushButton { background-color: #181c28; color: #e2e8f0; border: 1px dashed #334155; "
+            "border-radius: 8px; padding: 10px; font-weight: 600; } "
+            "QPushButton:hover { border-color: #06b6d4; color: #22d3ee; }"
+        )
+        self.btn_import_dropzone.clicked.connect(self._on_import_media_dialog)
+        media_right.addWidget(self.btn_import_dropzone)
+
+        gen_tools_row = QHBoxLayout()
+        btn_gen_art = QPushButton("✨ Generate Art")
+        btn_gen_art.setToolTip("Open Artwork & Thumbnail Studio to generate 16:9 / 9:16 visuals.")
+        btn_gen_art.clicked.connect(lambda: self._navigate_to_page("artwork"))
+        gen_tools_row.addWidget(btn_gen_art)
+
+        btn_gen_vo = QPushButton("🎙 Voiceover")
+        btn_gen_vo.setToolTip("Open Script & Voiceover Studio to synthesize local TTS narration.")
+        btn_gen_vo.clicked.connect(lambda: self._navigate_to_page("script_voice"))
+        gen_tools_row.addWidget(btn_gen_vo)
+        media_right.addLayout(gen_tools_row)
+
+        self.visual_media_list = QListWidget()
+        self.visual_media_list.setToolTip("Double-click any visual asset to set it as the active Player stage backdrop.")
+        self.visual_media_list.itemDoubleClicked.connect(self._on_visual_item_activated)
+        media_right.addWidget(self.visual_media_list, stretch=1)
+
+        media_split.addLayout(media_right, stretch=1)
+        media_tab_layout.addLayout(media_split, stretch=1)
+
+        # Bottom AI Clipper bar inside Media tab (matches Screenshot 1!)
+        clipper_bar = QHBoxLayout()
+        lbl_clipper = QLabel("✂️ <b>AI clipper</b> · Peak 30s 9:16")
+        lbl_clipper.setStyleSheet("color: #22d3ee; font-size: 11px; border: none;")
+        clipper_bar.addWidget(lbl_clipper, stretch=1)
+
+        self.btn_start_clipping = QPushButton("Start clipping")
+        self.btn_start_clipping.setStyleSheet(
+            "QPushButton { background-color: #06b6d4; color: #042f2e; font-weight: bold; "
+            "padding: 4px 10px; border-radius: 5px; font-size: 11px; border: none; }"
+        )
+        self.btn_start_clipping.setToolTip("Automatically extract the highest-energy 30-second window as a 9:16 Short.")
+        self.btn_start_clipping.clicked.connect(self._on_run_ai_clipper)
+        clipper_bar.addWidget(self.btn_start_clipping)
+        media_tab_layout.addLayout(clipper_bar)
+
+        self.asset_tabs.addTab(media_tab, "🎬 Media")
+
+        # Tab 2: Audio Library
+        audio_tab = QWidget()
+        audio_layout = QVBoxLayout(audio_tab)
+        self.audio_lib_list = QListWidget()
+        self.audio_lib_list.setToolTip("Indexed Music Library tracks & synthesized Voiceovers.")
+        audio_layout.addWidget(self.audio_lib_list, stretch=1)
+
+        btn_add_audio = QPushButton("+ Add Selected Audio to Timeline")
+        btn_add_audio.setObjectName("PrimaryButton")
+        btn_add_audio.clicked.connect(self._on_add_selected_library_audio)
+        audio_layout.addWidget(btn_add_audio)
+        self.asset_tabs.addTab(audio_tab, "🎵 Audio")
+
+        # Tab 3: Text & Overlays
+        text_tab = QWidget()
+        text_layout = QVBoxLayout(text_tab)
+        self.chk_stage_now_playing = QCheckBox("Show Dynamic 'Now Playing' Overlay")
+        self.chk_stage_now_playing.setChecked(True)
+        self.chk_stage_now_playing.toggled.connect(lambda _: self._sync_stage_canvas())
+        text_layout.addWidget(self.chk_stage_now_playing)
+
+        self.chk_stage_progress = QCheckBox("Show Animated Bottom Progress Bar")
+        self.chk_stage_progress.setChecked(True)
+        self.chk_stage_progress.toggled.connect(lambda _: self._sync_stage_canvas())
+        text_layout.addWidget(self.chk_stage_progress)
+
+        btn_open_script_studio = QPushButton("✍️ Open Script & Caption Studio →")
+        btn_open_script_studio.clicked.connect(lambda: self._navigate_to_page("script_voice"))
+        text_layout.addWidget(btn_open_script_studio)
+        text_layout.addStretch(1)
+        self.asset_tabs.addTab(text_tab, "𝐓 Text")
+
+        # Tab 4: Effects & Visualizers
+        fx_tab = QWidget()
+        fx_layout = QFormLayout(fx_tab)
+        self.combo_stage_visualizer = QComboBox()
+        self.combo_stage_visualizer.addItems([v.value for v in VisualizerStyle])
+        self.combo_stage_visualizer.currentTextChanged.connect(self._on_visualizer_style_changed)
+        fx_layout.addRow("Spectrum Style:", self.combo_stage_visualizer)
+        self.asset_tabs.addTab(fx_tab, "✨ Effects")
+
+        # Tab 5: Transitions
+        trans_tab = QWidget()
+        trans_layout = QVBoxLayout(trans_tab)
+        btn_apply_bass_swap = QPushButton("Apply Bass-Swap EQ (3000ms) to All Clips")
+        btn_apply_bass_swap.clicked.connect(
+            lambda: self._apply_transition_to_all(TransitionType.BASS_SWAP_EQ.value, 3000)
+        )
+        trans_layout.addWidget(btn_apply_bass_swap)
+
+        btn_apply_crossfade = QPushButton("Apply Smooth Crossfade (3000ms) to All Clips")
+        btn_apply_crossfade.clicked.connect(
+            lambda: self._apply_transition_to_all(TransitionType.CROSSFADE.value, 3000)
+        )
+        trans_layout.addWidget(btn_apply_crossfade)
+        trans_layout.addStretch(1)
+        self.asset_tabs.addTab(trans_tab, "⋈ Transitions")
+
+        # Tab 6: Filters / Niche Presets
+        filter_tab = QWidget()
+        filter_layout = QVBoxLayout(filter_tab)
+        self.filter_preset_list = QListWidget()
+        for preset in NICHE_STYLE_PRESETS.values():
+            it = QListWidgetItem(f"🎨 {preset.label} ({preset.default_aspect_ratio} · {preset.visual_style})")
+            it.setData(Qt.ItemDataRole.UserRole, preset.key)
+            self.filter_preset_list.addItem(it)
+        self.filter_preset_list.itemClicked.connect(self._on_filter_preset_clicked)
+        filter_layout.addWidget(self.filter_preset_list)
+        self.asset_tabs.addTab(filter_tab, "🎨 Filters")
+
+        left_layout.addWidget(self.asset_tabs)
+        upper_row.addWidget(left_frame, stretch=3)
+
+        # 2. Center Pane: Player (Live Stage Canvas + Bottom Transport Bar)
+        player_frame = QFrame()
+        player_frame.setStyleSheet(
+            "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 8px; }"
+        )
+        player_layout = QVBoxLayout(player_frame)
+        player_layout.setContentsMargins(10, 8, 10, 8)
+        player_layout.setSpacing(6)
+
+        player_hdr = QHBoxLayout()
+        lbl_player = QLabel("Player")
+        lbl_player.setStyleSheet("color: #cbd5e1; font-weight: bold; font-size: 12px; border: none;")
+        player_hdr.addWidget(lbl_player)
+        player_hdr.addStretch(1)
+
+        self.btn_swap_backdrop = QPushButton("🖼 Swap Backdrop…")
+        self.btn_swap_backdrop.clicked.connect(self._on_swap_visual_asset)
+        player_hdr.addWidget(self.btn_swap_backdrop)
+        player_layout.addLayout(player_hdr)
+
+        self.stage_canvas = VideoStageCanvas(self)
+        player_layout.addWidget(self.stage_canvas, stretch=1)
+
+        # Player Transport Bar (matches Screenshot 1 & 2)
+        player_transport = QHBoxLayout()
+        self.lbl_timecode = QLabel("00:00:00 / 00:00:00")
+        self.lbl_timecode.setStyleSheet(
+            "color: #94a3b8; font-family: monospace; font-size: 11px; font-weight: 600; border: none;"
+        )
+        player_transport.addWidget(self.lbl_timecode)
+        player_transport.addStretch(1)
+
+        self.btn_play = QPushButton("▶ Play")
+        self.btn_play.setObjectName("PrimaryButton")
+        self.btn_play.clicked.connect(self.toggle_playback)
+        player_transport.addWidget(self.btn_play)
+
+        self.btn_stop = QPushButton("⏹ Stop")
+        self.btn_stop.clicked.connect(self.stop_playback)
+        player_transport.addWidget(self.btn_stop)
+
+        player_transport.addStretch(1)
+        self.btn_ratio_badge = QPushButton("Ratio: 16:9")
+        self.btn_ratio_badge.setToolTip("Toggle between 16:9 Widescreen and 9:16 Vertical Short.")
+        self.btn_ratio_badge.clicked.connect(self._toggle_aspect_ratio)
+        player_transport.addWidget(self.btn_ratio_badge)
+
+        self.btn_popout = QPushButton("⛶ Pop-out")
+        self.btn_popout.setToolTip("Open the full-screen modal Timeline & Canvas Editor dialog.")
+        self.btn_popout.clicked.connect(self._on_open_modal_editor)
+        player_transport.addWidget(self.btn_popout)
+
+        player_layout.addLayout(player_transport)
+        upper_row.addWidget(player_frame, stretch=4)
+
+        # 3. Right Pane: Details & Clip Inspector (matches Screenshot 1 & 2!)
+        details_frame = QFrame()
+        details_frame.setStyleSheet(
+            "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 8px; }"
+        )
+        details_layout = QVBoxLayout(details_frame)
+        details_layout.setContentsMargins(12, 8, 12, 8)
+        details_layout.setSpacing(6)
+
+        lbl_details = QLabel("Details")
+        lbl_details.setStyleSheet("color: #06b6d4; font-weight: bold; font-size: 13px; border: none;")
+        details_layout.addWidget(lbl_details)
+
+        proj_meta_form = QFormLayout()
+        proj_meta_form.setSpacing(4)
+        self.lbl_detail_name = QLabel("—")
+        self.lbl_detail_name.setStyleSheet("color: #f8fafc; font-weight: 600; border: none;")
+        proj_meta_form.addRow("Name:", self.lbl_detail_name)
+
+        self.lbl_detail_saved = QLabel(str(get_settings().resolved_output_dir()))
+        self.lbl_detail_saved.setWordWrap(True)
+        self.lbl_detail_saved.setStyleSheet("color: #94a3b8; font-size: 10px; border: none;")
+        proj_meta_form.addRow("Saved:", self.lbl_detail_saved)
+
+        self.lbl_detail_ratio = QLabel("16:9 (1920x1080 · 30.00fps)")
+        self.lbl_detail_ratio.setStyleSheet("color: #cbd5e1; font-size: 11px; border: none;")
+        proj_meta_form.addRow("Format:", self.lbl_detail_ratio)
+        details_layout.addLayout(proj_meta_form)
+
+        # Selected Clip Precision Inspector
+        insp_group = QGroupBox("Selected Clip Inspector")
+        insp_form = QFormLayout(insp_group)
+        insp_form.setSpacing(5)
+
+        self.lbl_selected_clip = QLabel("No clip selected")
+        self.lbl_selected_clip.setStyleSheet("color: #22d3ee; font-weight: 600;")
+        insp_form.addRow("Active Clip:", self.lbl_selected_clip)
+
+        self.spin_trim_start = QSpinBox()
+        self.spin_trim_start.setRange(0, 36_000_000)
+        self.spin_trim_start.setSingleStep(250)
+        self.spin_trim_start.valueChanged.connect(self._on_inspector_changed)
+        insp_form.addRow("Trim In (ms):", self.spin_trim_start)
+
+        self.spin_trim_end = QSpinBox()
+        self.spin_trim_end.setRange(0, 36_000_000)
+        self.spin_trim_end.setSingleStep(250)
+        self.spin_trim_end.setSpecialValueText("Full End (0)")
+        self.spin_trim_end.valueChanged.connect(self._on_inspector_changed)
+        insp_form.addRow("Trim Out (ms):", self.spin_trim_end)
+
+        self.spin_gain = QDoubleSpinBox()
+        self.spin_gain.setRange(-24.0, 24.0)
+        self.spin_gain.setSingleStep(0.5)
+        self.spin_gain.valueChanged.connect(self._on_inspector_changed)
+        insp_form.addRow("Gain (dB):", self.spin_gain)
+
+        self.spin_fade_in = QSpinBox()
+        self.spin_fade_in.setRange(0, 60_000)
+        self.spin_fade_in.setSingleStep(250)
+        self.spin_fade_in.valueChanged.connect(self._on_inspector_changed)
+        insp_form.addRow("Fade In (ms):", self.spin_fade_in)
+
+        self.spin_fade_out = QSpinBox()
+        self.spin_fade_out.setRange(0, 60_000)
+        self.spin_fade_out.setSingleStep(250)
+        self.spin_fade_out.valueChanged.connect(self._on_inspector_changed)
+        insp_form.addRow("Fade Out (ms):", self.spin_fade_out)
+
+        self.combo_transition = QComboBox()
+        self.combo_transition.addItems([t.value for t in TransitionType])
+        self.combo_transition.currentTextChanged.connect(self._on_inspector_changed)
+        insp_form.addRow("Transition:", self.combo_transition)
+
+        self.spin_overlap = QSpinBox()
+        self.spin_overlap.setRange(0, 30_000)
+        self.spin_overlap.setSingleStep(500)
+        self.spin_overlap.valueChanged.connect(self._on_inspector_changed)
+        insp_form.addRow("Overlap (ms):", self.spin_overlap)
+
+        details_layout.addWidget(insp_group, stretch=1)
+
+        self.btn_save_modify = QPushButton("💾 Modify & Save Timeline")
+        self.btn_save_modify.setObjectName("PrimaryButton")
+        self.btn_save_modify.setToolTip("Persist all clip trims, gains, fades, and reorderings to the database.")
+        self.btn_save_modify.clicked.connect(self._on_save_changes)
+        details_layout.addWidget(self.btn_save_modify)
+
+        upper_row.addWidget(details_frame, stretch=3)
+        root.addLayout(upper_row, stretch=3)
+
+        # Bottom Full-Width Multi-Track Timeline Dock + Floating EditPilot Action Bar
+        timeline_dock = QFrame()
+        timeline_dock.setStyleSheet(
+            "QFrame { background-color: #0d1017; border: 1px solid #1e293b; border-radius: 8px; }"
+        )
+        dock_layout = QVBoxLayout(timeline_dock)
+        dock_layout.setContentsMargins(10, 6, 10, 8)
+        dock_layout.setSpacing(6)
+
+        tbar = QHBoxLayout()
+        btn_set_in = QPushButton("⇤ Set In at Playhead")
+        btn_set_in.clicked.connect(self._on_set_in_at_playhead)
+        tbar.addWidget(btn_set_in)
+
+        btn_set_out = QPushButton("⇥ Set Out at Playhead")
+        btn_set_out.clicked.connect(self._on_set_out_at_playhead)
+        tbar.addWidget(btn_set_out)
+
+        btn_reset = QPushButton("↺ Reset Trim")
+        btn_reset.clicked.connect(self._on_reset_clip_trim)
+        tbar.addWidget(btn_reset)
+
+        btn_left = QPushButton("← Earlier")
+        btn_left.clicked.connect(lambda: self._on_move_selected_clip(-1))
+        tbar.addWidget(btn_left)
+
+        btn_right = QPushButton("→ Later")
+        btn_right.clicked.connect(lambda: self._on_move_selected_clip(1))
+        tbar.addWidget(btn_right)
+
+        btn_del = QPushButton("🗑 Delete")
+        btn_del.clicked.connect(self._on_delete_selected_clip)
+        tbar.addWidget(btn_del)
+
+        btn_harmonic = QPushButton("🎵 Harmonic Sort")
+        btn_harmonic.setToolTip("Reorder tracks by BPM and Camelot Key compatibility.")
+        btn_harmonic.clicked.connect(self._on_harmonic_sort)
+        tbar.addWidget(btn_harmonic)
+
+        tbar.addStretch(1)
+
+        # Floating-style EditPilot pill button (matches bottom-right of Screenshots 1 & 2!)
+        self.btn_edit_pilot = QPushButton("✦ EditPilot")
+        self.btn_edit_pilot.setStyleSheet(
+            "QPushButton { background-color: #1e293b; color: #22d3ee; font-weight: bold; "
+            "padding: 5px 14px; border-radius: 14px; border: 1px solid #06b6d4; } "
+            "QPushButton:hover { background-color: #06b6d4; color: #042f2e; }"
+        )
+        self.btn_edit_pilot.setToolTip(
+            "EditPilot Assistant: Auto-populate tracks, trim silence, harmonic-sort by BPM/Key, and save."
+        )
+        self.btn_edit_pilot.clicked.connect(self._on_editpilot_autoload)
+        tbar.addWidget(self.btn_edit_pilot)
+
+        dock_layout.addLayout(tbar)
+
+        self.timeline_widget = MultiTrackTimelineWidget(
+            self,
+            on_clip_selected=self._on_timeline_clip_selected,
+            on_playhead_scrubbed=self._on_playhead_scrubbed,
+            on_clip_trimmed=self._on_timeline_clip_trimmed_by_drag,
+        )
+        dock_layout.addWidget(self.timeline_widget, stretch=1)
+
+        root.addWidget(timeline_dock, stretch=2)
+
+    def refresh(self) -> None:
+        from youtube_studio.config import get_settings
+        from youtube_studio.domain.models.media import MediaType
+        from youtube_studio.domain.services import ChannelService
+
+        self.lbl_detail_saved.setText(str(get_settings().resolved_output_dir()))
+        try:
+            with session_scope() as session:
+                channels = ChannelService(session).list_active()
+                audio_items = MediaLibraryService(session).list_media(media_type=MediaType.AUDIO)
+        except Exception:
+            return
+
+        self.audio_lib_list.clear()
+        for m in audio_items:
+            from PySide6.QtWidgets import QListWidgetItem
+
+            title = str(m.metadata.get("title") or Path(m.path).stem)
+            bpm = m.metadata.get("bpm")
+            camelot = m.metadata.get("camelot_code")
+            badge = f" · {bpm} BPM · {camelot}" if bpm and camelot else ""
+            it = QListWidgetItem(f"🎵 {title}{badge}")
+            it.setData(Qt.ItemDataRole.UserRole, m.id)
+            self.audio_lib_list.addItem(it)
+
+        self.visual_media_list.clear()
+        vis_dir = get_settings().resolved_data_dir() / "visual_assets"
+        if vis_dir.exists():
+            for p in sorted(vis_dir.iterdir()):
+                if p.is_file() and not p.name.startswith("."):
+                    from PySide6.QtWidgets import QListWidgetItem
+
+                    it = QListWidgetItem(f"🖼 {p.name}")
+                    it.setData(Qt.ItemDataRole.UserRole, str(p))
+                    self.visual_media_list.addItem(it)
+
+        prev_ch = self.current_channel_id()
+        self.channel_combo.blockSignals(True)
+        self.channel_combo.clear()
+        self._channel_ids = []
+        for ch in channels:
+            self.channel_combo.addItem(ch.name)
+            self._channel_ids.append(ch.id)
+        if prev_ch in self._channel_ids:
+            self.channel_combo.setCurrentIndex(self._channel_ids.index(prev_ch))
+        self.channel_combo.blockSignals(False)
+        self._reload_projects()
+
+    def current_channel_id(self) -> Optional[str]:
+        idx = self.channel_combo.currentIndex()
+        if 0 <= idx < len(self._channel_ids):
+            return self._channel_ids[idx]
+        return None
+
+    def current_project_id(self) -> Optional[str]:
+        idx = self.project_combo.currentIndex()
+        if 0 <= idx < len(self._project_ids):
+            return self._project_ids[idx]
+        return None
+
+    def select_project(self, project_id: str) -> None:
+        self.refresh()
+        if project_id in self._project_ids:
+            self.project_combo.setCurrentIndex(self._project_ids.index(project_id))
+            self._load_project_timeline()
+
+    def _on_channel_changed(self, _idx: int) -> None:
+        self._reload_projects()
+
+    def _reload_projects(self) -> None:
+        ch_id = self.current_channel_id()
+        prev_proj = self.current_project_id()
+        self.project_combo.blockSignals(True)
+        self.project_combo.clear()
+        self._project_ids = []
+        if ch_id:
+            with session_scope() as session:
+                projects = ProjectService(session).list_projects(channel_id=ch_id)
+            for p in projects:
+                self.project_combo.addItem(p.name)
+                self._project_ids.append(p.id)
+            if prev_proj in self._project_ids:
+                self.project_combo.setCurrentIndex(self._project_ids.index(prev_proj))
+        self.project_combo.blockSignals(False)
+        self._load_project_timeline()
+
+    def _on_project_changed(self, _idx: int) -> None:
+        self._load_project_timeline()
+
+    def _load_project_timeline(self) -> None:
+        proj_id = self.current_project_id()
+        self._clips = []
+        if not proj_id:
+            self.lbl_detail_name.setText("No project selected")
+            self.timeline_widget.set_timeline_data([])
+            self.empty_state.setVisible(True)
+            self._sync_stage_canvas()
+            return
+
+        with session_scope() as session:
+            proj_svc = ProjectService(session)
+            media_svc = MediaLibraryService(session)
+            proj = proj_svc.get_project(proj_id)
+            if proj:
+                self.lbl_detail_name.setText(proj.name)
+            tracks = proj_svc.list_tracks(proj_id)
+            for pt in tracks:
+                mf = media_svc.get(pt.media_file_id)
+                if not mf:
+                    continue
+                title = str(mf.metadata.get("title") or Path(mf.path).stem)
+                artist = str(mf.metadata.get("artist") or "—")
+                peaks = list(mf.metadata.get("waveform_peaks") or [])[:36]
+                self._clips.append(
+                    TimelineClipItem(
+                        track_id=pt.id,
+                        media_file_id=mf.id,
+                        title=title,
+                        artist=artist,
+                        file_path=mf.path,
+                        source_duration_ms=mf.duration_ms or 60_000,
+                        trim_start_ms=pt.trim_start_ms,
+                        trim_end_ms=pt.trim_end_ms,
+                        gain_db=pt.gain_db,
+                        fade_in_ms=pt.fade_in_ms,
+                        fade_out_ms=pt.fade_out_ms,
+                        overlap_ms=pt.transition_config.overlap_ms,
+                        transition_type=pt.transition_config.transition_type.value,
+                        bpm=mf.metadata.get("bpm"),
+                        camelot_code=mf.metadata.get("camelot_code"),
+                        peaks=peaks,
+                    )
+                )
+
+        self.empty_state.setVisible(len(self._clips) == 0)
+        vis_lbl = self._visual_asset_path.name if self._visual_asset_path else "Auto-Generated 16:9 Artwork"
+        self.timeline_widget.set_timeline_data(self._clips, selected_idx=0, visual_label=vis_lbl)
+        self._populate_inspector(0)
+        self._sync_stage_canvas()
+
+    def _populate_inspector(self, idx: int) -> None:
+        if idx < 0 or idx >= len(self._clips):
+            self.lbl_selected_clip.setText("No clip selected")
+            return
+        c = self._clips[idx]
+        self.lbl_selected_clip.setText(f"{idx + 1}. {c.title}")
+        for w in (
+            self.spin_trim_start,
+            self.spin_trim_end,
+            self.spin_gain,
+            self.spin_fade_in,
+            self.spin_fade_out,
+            self.combo_transition,
+            self.spin_overlap,
+        ):
+            w.blockSignals(True)
+        self.spin_trim_start.setValue(c.trim_start_ms)
+        self.spin_trim_end.setValue(c.trim_end_ms or 0)
+        self.spin_gain.setValue(c.gain_db)
+        self.spin_fade_in.setValue(c.fade_in_ms)
+        self.spin_fade_out.setValue(c.fade_out_ms)
+        self.combo_transition.setCurrentText(c.transition_type)
+        self.spin_overlap.setValue(c.overlap_ms)
+        for w in (
+            self.spin_trim_start,
+            self.spin_trim_end,
+            self.spin_gain,
+            self.spin_fade_in,
+            self.spin_fade_out,
+            self.combo_transition,
+            self.spin_overlap,
+        ):
+            w.blockSignals(False)
+
+    def _on_inspector_changed(self, *_args) -> None:
+        idx = self.timeline_widget.selected_clip_index()
+        if idx < 0 or idx >= len(self._clips):
+            return
+        c = self._clips[idx]
+        c.trim_start_ms = self.spin_trim_start.value()
+        end_val = self.spin_trim_end.value()
+        c.trim_end_ms = end_val if end_val > c.trim_start_ms else None
+        c.gain_db = float(self.spin_gain.value())
+        c.fade_in_ms = self.spin_fade_in.value()
+        c.fade_out_ms = self.spin_fade_out.value()
+        c.transition_type = self.combo_transition.currentText()
+        c.overlap_ms = self.spin_overlap.value()
+        vis_lbl = self._visual_asset_path.name if self._visual_asset_path else "Auto-Generated 16:9 Artwork"
+        self.timeline_widget.set_timeline_data(self._clips, selected_idx=idx, visual_label=vis_lbl)
+        self._sync_stage_canvas()
+
+    def _on_timeline_clip_selected(self, idx: int) -> None:
+        self._populate_inspector(idx)
+        self._sync_stage_canvas()
+
+    def _on_timeline_clip_trimmed_by_drag(self, idx: int, _start_ms: int, _end_ms: Optional[int]) -> None:
+        self._populate_inspector(idx)
+        self._sync_stage_canvas()
+
+    def _clip_at_playhead(self, playhead_ms: int) -> tuple[int, Optional[TimelineClipItem]]:
+        for idx, c in enumerate(self._clips):
+            if c.timeline_start_ms <= playhead_ms <= c.timeline_end_ms:
+                return idx, c
+        if self._clips:
+            sel = self.timeline_widget.selected_clip_index()
+            if 0 <= sel < len(self._clips):
+                return sel, self._clips[sel]
+        return -1, None
+
+    def _sync_stage_canvas(self) -> None:
+        pos_ms = self.timeline_widget.playhead_ms()
+        tot_ms = self.timeline_widget.total_duration_ms()
+        _, active_clip = self._clip_at_playhead(pos_ms)
+        now_title = active_clip.title if active_clip else "No active track"
+        aspect = "9:16" if self.aspect_combo.currentIndex() == 1 else "16:9"
+        self.btn_ratio_badge.setText(f"Ratio: {aspect}")
+        res_txt = "1080x1920 · 30.00fps" if aspect == "9:16" else "1920x1080 · 30.00fps"
+        self.lbl_detail_ratio.setText(f"{aspect} ({res_txt})")
+        self.stage_canvas.set_stage_state(
+            playhead_ms=pos_ms,
+            total_duration_ms=tot_ms,
+            now_playing_text=now_title,
+            visualizer_style=self._visualizer_style,
+            show_now_playing=self.chk_stage_now_playing.isChecked(),
+            show_progress_bar=self.chk_stage_progress.isChecked(),
+            aspect_mode=aspect,
+        )
+        self.lbl_timecode.setText(
+            f"00:{MultiTrackTimelineWidget._format_mm_ss(pos_ms)} / 00:{MultiTrackTimelineWidget._format_mm_ss(tot_ms)}"
+        )
+
+    def _toggle_aspect_ratio(self) -> None:
+        self.aspect_combo.setCurrentIndex(1 if self.aspect_combo.currentIndex() == 0 else 0)
+
+    def _on_visualizer_style_changed(self, style: str) -> None:
+        self._visualizer_style = style
+        self._sync_stage_canvas()
+
+    def _on_playhead_scrubbed(self, pos_ms: int) -> None:
+        self._sync_stage_canvas()
+        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._seek_player_to_timeline_ms(pos_ms)
+
+    def toggle_playback(self) -> None:
+        if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._player.pause()
+            self.stage_canvas.set_playing(False)
+            self.btn_play.setText("▶ Resume")
+            return
+        self._seek_player_to_timeline_ms(self.timeline_widget.playhead_ms(), start_play=True)
+
+    def stop_playback(self) -> None:
+        self._player.stop()
+        self.stage_canvas.set_playing(False)
+        self.btn_play.setText("▶ Play")
+
+    def _seek_player_to_timeline_ms(self, pos_ms: int, *, start_play: bool = False) -> None:
+        idx, clip = self._clip_at_playhead(pos_ms)
+        if clip is None or not Path(clip.file_path).exists():
+            return
+        offset_in_clip = max(0, pos_ms - clip.timeline_start_ms) + clip.trim_start_ms
+        if self._active_playing_clip_idx != idx:
+            self._active_playing_clip_idx = idx
+            self._player.setSource(QUrl.fromLocalFile(clip.file_path))
+        self._player.setPosition(int(offset_in_clip))
+        if start_play:
+            self._player.play()
+            self.stage_canvas.set_playing(True)
+            self.btn_play.setText("⏸ Pause")
+
+    def _on_media_position_changed(self, media_pos_ms: int) -> None:
+        if (
+            self._player.playbackState() != QMediaPlayer.PlaybackState.PlayingState
+            or self._active_playing_clip_idx is None
+            or not (0 <= self._active_playing_clip_idx < len(self._clips))
+        ):
+            return
+        clip = self._clips[self._active_playing_clip_idx]
+        timeline_pos = clip.timeline_start_ms + max(0, int(media_pos_ms) - clip.trim_start_ms)
+        self.timeline_widget.set_playhead_ms(timeline_pos)
+        self._sync_stage_canvas()
+
+    def _on_set_in_at_playhead(self) -> None:
+        idx = self.timeline_widget.selected_clip_index()
+        if idx < 0 or idx >= len(self._clips):
+            return
+        clip = self._clips[idx]
+        pos_ms = self.timeline_widget.playhead_ms()
+        if clip.timeline_start_ms < pos_ms < clip.timeline_end_ms:
+            delta = pos_ms - clip.timeline_start_ms
+            clip.trim_start_ms = min(clip.source_duration_ms - 1000, clip.trim_start_ms + delta)
+            self.timeline_widget.set_timeline_data(self._clips, selected_idx=idx)
+            self._populate_inspector(idx)
+            self._sync_stage_canvas()
+
+    def _on_set_out_at_playhead(self) -> None:
+        idx = self.timeline_widget.selected_clip_index()
+        if idx < 0 or idx >= len(self._clips):
+            return
+        clip = self._clips[idx]
+        pos_ms = self.timeline_widget.playhead_ms()
+        if clip.timeline_start_ms < pos_ms < clip.timeline_end_ms:
+            new_eff = max(1000, pos_ms - clip.timeline_start_ms)
+            clip.trim_end_ms = min(clip.source_duration_ms, clip.trim_start_ms + new_eff)
+            self.timeline_widget.set_timeline_data(self._clips, selected_idx=idx)
+            self._populate_inspector(idx)
+            self._sync_stage_canvas()
+
+    def _on_reset_clip_trim(self) -> None:
+        idx = self.timeline_widget.selected_clip_index()
+        if idx < 0 or idx >= len(self._clips):
+            return
+        clip = self._clips[idx]
+        clip.trim_start_ms = 0
+        clip.trim_end_ms = None
+        self.timeline_widget.set_timeline_data(self._clips, selected_idx=idx)
+        self._populate_inspector(idx)
+        self._sync_stage_canvas()
+
+    def _on_move_selected_clip(self, delta: int) -> None:
+        idx = self.timeline_widget.selected_clip_index()
+        target = idx + delta
+        if 0 <= idx < len(self._clips) and 0 <= target < len(self._clips):
+            self._clips[idx], self._clips[target] = self._clips[target], self._clips[idx]
+            self.timeline_widget.set_timeline_data(self._clips, selected_idx=target)
+            self._populate_inspector(target)
+            self._sync_stage_canvas()
+
+    def _on_delete_selected_clip(self) -> None:
+        idx = self.timeline_widget.selected_clip_index()
+        if 0 <= idx < len(self._clips):
+            self._clips.pop(idx)
+            new_sel = max(0, min(idx, len(self._clips) - 1))
+            self.timeline_widget.set_timeline_data(self._clips, selected_idx=new_sel)
+            self._populate_inspector(new_sel)
+            self._sync_stage_canvas()
+
+    def _apply_transition_to_all(self, transition_type: str, overlap_ms: int) -> None:
+        for c in self._clips:
+            c.transition_type = transition_type
+            c.overlap_ms = overlap_ms
+        sel = self.timeline_widget.selected_clip_index()
+        self.timeline_widget.set_timeline_data(self._clips, selected_idx=sel)
+        self._populate_inspector(sel)
+        self._sync_stage_canvas()
+
+    def _on_harmonic_sort(self) -> None:
+        proj_id = self.current_project_id()
+        if not proj_id:
+            return
+        self._on_save_changes(silent=True)
+        with session_scope() as session:
+            ProjectService(session).auto_harmonic_sort(proj_id)
+        self._load_project_timeline()
+
+    def _on_swap_visual_asset(self) -> None:
+        chosen, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Background Image or Video Loop",
+            str(Path.home()),
+            "Visual Assets (*.png *.jpg *.jpeg *.webp *.mp4 *.mov *.webm *.mkv)",
+        )
+        if not chosen:
+            return
+        self._visual_asset_path = Path(chosen)
+        self.stage_canvas.set_background_asset(self._visual_asset_path)
+        self.timeline_widget.set_timeline_data(
+            self._clips,
+            selected_idx=self.timeline_widget.selected_clip_index(),
+            visual_label=self._visual_asset_path.name,
+        )
+
+    def _on_visual_item_activated(self, item) -> None:
+        raw = item.data(Qt.ItemDataRole.UserRole)
+        if raw and Path(str(raw)).exists():
+            self._visual_asset_path = Path(str(raw))
+            self.stage_canvas.set_background_asset(self._visual_asset_path)
+            self.timeline_widget.set_timeline_data(
+                self._clips,
+                selected_idx=self.timeline_widget.selected_clip_index(),
+                visual_label=self._visual_asset_path.name,
+            )
+
+    def _on_filter_preset_clicked(self, item) -> None:
+        from youtube_studio.domain.models.channel import NICHE_STYLE_PRESETS
+
+        key = str(item.data(Qt.ItemDataRole.UserRole) or "")
+        preset = NICHE_STYLE_PRESETS.get(key)
+        if preset:
+            self._visualizer_style = preset.visualizer_style
+            self.combo_stage_visualizer.setCurrentText(preset.visualizer_style)
+            self.aspect_combo.setCurrentIndex(1 if preset.default_aspect_ratio == "9:16" else 0)
+            self._sync_stage_canvas()
+
+    def _on_import_media_dialog(self) -> None:
+        import shutil
+        from youtube_studio.config import get_settings
+        from youtube_studio.media.scanner import MediaScanner
+
+        files, _ = QFileDialog.getOpenFileNames(
+            self,
+            "Import Audio, Image, or Video Assets",
+            str(Path.home()),
+            "Media Files (*.wav *.mp3 *.flac *.m4a *.aac *.ogg *.png *.jpg *.jpeg *.webp *.mp4 *.mov *.webm)",
+        )
+        if not files:
+            return
+        audio_exts = {".wav", ".mp3", ".flac", ".m4a", ".aac", ".ogg", ".aiff", ".opus"}
+        vis_dir = get_settings().resolved_data_dir() / "visual_assets"
+        vis_dir.mkdir(parents=True, exist_ok=True)
+        scanner = MediaScanner()
+        added_audio_ids: list[str] = []
+        with session_scope() as session:
+            media_svc = MediaLibraryService(session)
+            for f in files:
+                p = Path(f)
+                if p.suffix.lower() in audio_exts:
+                    info = scanner.inspect_file(p)
+                    saved = media_svc.upsert(info)
+                    added_audio_ids.append(saved.id)
+                else:
+                    dest = vis_dir / p.name
+                    if dest.resolve() != p.resolve():
+                        shutil.copy2(p, dest)
+                    self._visual_asset_path = dest
+                    self.stage_canvas.set_background_asset(dest)
+        if added_audio_ids:
+            proj_id = self._ensure_project_exists()
+            with session_scope() as session:
+                proj_svc = ProjectService(session)
+                for mid in added_audio_ids:
+                    proj_svc.add_track(
+                        proj_id,
+                        mid,
+                        transition_config=TransitionConfig(
+                            transition_type=TransitionType.BASS_SWAP_EQ, overlap_ms=3000
+                        ),
+                    )
+        self.refresh()
+
+    def _on_add_selected_library_audio(self) -> None:
+        item = self.audio_lib_list.currentItem()
+        if not item:
+            return
+        mid = str(item.data(Qt.ItemDataRole.UserRole) or "")
+        if not mid:
+            return
+        proj_id = self._ensure_project_exists()
+        with session_scope() as session:
+            ProjectService(session).add_track(
+                proj_id,
+                mid,
+                transition_config=TransitionConfig(
+                    transition_type=TransitionType.BASS_SWAP_EQ, overlap_ms=3000
+                ),
+            )
+        self._load_project_timeline()
+
+    def _ensure_project_exists(self) -> str:
+        from youtube_studio.domain.models.project import ProjectType
+        from youtube_studio.domain.services.autopilot_service import ExpressAutopilotService
+
+        ch_id = self.current_channel_id()
+        proj_id = self.current_project_id()
+        with session_scope() as session:
+            ap = ExpressAutopilotService(session)
+            if not ch_id:
+                ch_id, _, _ = ap.ensure_active_channel()
+            if not proj_id:
+                proj = ProjectService(session).create_project(
+                    ch_id, "Timeline Studio Project", project_type=ProjectType.MIX
+                )
+                proj_id = proj.id
+        self.refresh()
+        return proj_id
+
+    def _on_editpilot_autoload(self) -> None:
+        from PySide6.QtWidgets import QMessageBox
+        from youtube_studio.domain.services.autopilot_service import ExpressAutopilotService
+
+        proj_id = self._ensure_project_exists()
+        with session_scope() as session:
+            ap = ExpressAutopilotService(session)
+            tracks = ap.resolve_tracks()
+            if not tracks:
+                QMessageBox.information(
+                    self,
+                    "EditPilot",
+                    "Scan or upload audio files in the Music Library first, then click EditPilot.",
+                )
+                return
+            proj_svc = ProjectService(session)
+            existing = {t.media_file_id for t in proj_svc.list_tracks(proj_id)}
+            for m in tracks:
+                if m.id not in existing:
+                    proj_svc.add_track(
+                        proj_id,
+                        m.id,
+                        transition_config=TransitionConfig(
+                            transition_type=TransitionType.BASS_SWAP_EQ, overlap_ms=3000
+                        ),
+                    )
+            proj_svc.auto_cue_trim_tracks(proj_id)
+            if len(proj_svc.list_tracks(proj_id)) > 1:
+                proj_svc.auto_harmonic_sort(proj_id)
+        self._load_project_timeline()
+        self.lbl_autosave.setText("● Auto saved: EditPilot synced")
+
+    def _on_run_ai_clipper(self) -> None:
+        from PySide6.QtWidgets import QMessageBox
+        from youtube_studio.config import get_settings
+        from youtube_studio.jobs.runner import sanitize_output_name
+        from youtube_studio.media.shorts_clipper import ShortsClipperService
+
+        proj_id = self.current_project_id()
+        if not proj_id or not self._clips:
+            QMessageBox.warning(self, "AI Clipper", "Add at least one audio clip to the timeline first.")
+            return
+        first_clip = self._clips[0]
+        out_name = sanitize_output_name(self.lbl_detail_name.text().strip() or "short_clip")
+        out_dir = get_settings().resolved_output_dir() / out_name / "shorts"
+        try:
+            short_res = ShortsClipperService().create_highlight_short(
+                Path(first_clip.file_path),
+                out_dir,
+                title=first_clip.title,
+                output_name=out_name,
+                source_duration_ms=first_clip.source_duration_ms,
+            )
+            QMessageBox.information(
+                self,
+                "✂️ AI Clipper Complete",
+                f"Extracted peak 30s 9:16 Short ({short_res.start_ms}ms – {short_res.end_ms}ms):\n\n"
+                f"Video: {short_res.video_path}\nThumbnail: {short_res.thumbnail_path}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "AI Clipper Failed", str(exc))
+
+    def _on_save_changes(self, *, silent: bool = False) -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        proj_id = self.current_project_id()
+        if not proj_id:
+            return
+        self.stop_playback()
+        with session_scope() as session:
+            proj_svc = ProjectService(session)
+            existing_tracks = {t.id: t for t in proj_svc.list_tracks(proj_id)}
+            kept_ids = {c.track_id for c in self._clips}
+            for tid in list(existing_tracks.keys()):
+                if tid not in kept_ids:
+                    proj_svc.remove_track(tid)
+            ordered_ids = [c.track_id for c in self._clips if c.track_id in existing_tracks]
+            if ordered_ids:
+                proj_svc.reorder_tracks(proj_id, ordered_ids)
+            refreshed = {t.id: t for t in proj_svc.list_tracks(proj_id)}
+            for c in self._clips:
+                pt = refreshed.get(c.track_id)
+                if pt is None:
+                    continue
+                pt.trim_start_ms = c.trim_start_ms
+                pt.trim_end_ms = c.trim_end_ms
+                pt.gain_db = c.gain_db
+                pt.fade_in_ms = c.fade_in_ms
+                pt.fade_out_ms = c.fade_out_ms
+                pt.transition_config = TransitionConfig(
+                    transition_type=TransitionType(c.transition_type)
+                    if c.overlap_ms > 0
+                    else TransitionType.NONE,
+                    overlap_ms=c.overlap_ms,
+                )
+                proj_svc.update_track(pt)
+        self.lbl_autosave.setText("● Auto saved: Just now")
+        if not silent:
+            QMessageBox.information(
+                self,
+                "Timeline Saved",
+                f"Saved {len(self._clips)} timeline clip edits to project.",
+            )
+
+    def _on_export_timeline_package(self) -> None:
+        from PySide6.QtGui import QDesktopServices
+        from PySide6.QtWidgets import QMessageBox
+        from youtube_studio.config import get_settings
+        from youtube_studio.jobs.runner import sanitize_output_name
+        from youtube_studio.media.nle_exporter import NLEExporterService
+
+        proj_id = self.current_project_id()
+        if not proj_id:
+            QMessageBox.warning(self, "Export", "Select or create a project first.")
+            return
+        self._on_save_changes(silent=True)
+        out_name = sanitize_output_name(self.lbl_detail_name.text().strip() or proj_id)
+        out_dir = get_settings().resolved_output_dir() / out_name
+        try:
+            with session_scope() as session:
+                bundle = NLEExporterService(session).export_project_timeline(
+                    proj_id,
+                    out_dir,
+                    output_name=out_name,
+                    visual_asset_path=self._visual_asset_path,
+                )
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(bundle.output_dir)))
+            QMessageBox.information(
+                self,
+                "Timeline Exported",
+                f"Exported {bundle.clip_count}-clip timeline bundle to:\n  {bundle.output_dir}\n\n"
+                f"• FCPXML: {bundle.fcpxml_path.name}\n"
+                f"• CMX 3600 EDL: {bundle.edl_path.name}\n"
+                f"• CSV Clip List: {bundle.csv_clip_list_path.name}",
+            )
+        except Exception as exc:
+            QMessageBox.critical(self, "Export Failed", str(exc))
+
+    def _on_open_modal_editor(self) -> None:
+        proj_id = self._ensure_project_exists()
+        dlg = TimelineCanvasEditorDialog(
+            self,
+            project_id=proj_id,
+            visual_asset_path=self._visual_asset_path,
+            visualizer_style=self._visualizer_style,
+            on_saved=self._load_project_timeline,
+        )
+        dlg.exec()
+
+    def _navigate_to_page(self, page_key: str) -> None:
+        win = self.window()
+        nav_items = getattr(win, "NAV_ITEMS", None)
+        nav_widget = getattr(win, "nav", None)
+        if nav_items and nav_widget:
+            for idx, (_, key, _) in enumerate(nav_items):
+                if key == page_key:
+                    nav_widget.setCurrentRow(idx)
+                    break
+

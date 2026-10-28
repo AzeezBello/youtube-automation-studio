@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bgGrad" cx="35%" cy="25%" r="78%">
+      <stop offset="0%" stop-color="#312E81"/>
+      <stop offset="55%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#050811"/>
+    </radialGradient>
+    <linearGradient id="rimGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="50%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="playGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="50%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#EA580C"/>
+    </linearGradient>
+    <linearGradient id="barGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="60%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#FACC15"/>
+    </linearGradient>
+  </defs>
+
+  <!-- macOS Squircle Background -->
+  <rect x="64" y="64" width="896" height="896" rx="210" fill="url(#bgGrad)" stroke="url(#rimGrad)" stroke-width="16"/>
+
+  <!-- Outer Vinyl / Harmonic Wheel Grooves -->
+  <circle cx="512" cy="480" r="320" stroke="#334155" stroke-width="6" stroke-dasharray="18 12" opacity="0.75"/>
+  <circle cx="512" cy="480" r="272" stroke="#475569" stroke-width="4" opacity="0.65"/>
+  <circle cx="512" cy="480" r="224" stroke="#6366F1" stroke-width="6" opacity="0.55"/>
+
+  <!-- Glowing Inner Studio Ring -->
+  <circle cx="512" cy="480" r="168" fill="#0B0F19" stroke="url(#rimGrad)" stroke-width="12"/>
+
+  <!-- Center Play Triangle Emblem -->
+  <polygon points="462,388 462,572 618,480" fill="url(#playGrad)"/>
+
+  <!-- Audio Spectrum Equalizer Bars at Bottom -->
+  <g fill="url(#barGrad)" opacity="0.95">
+    <rect x="236" y="790" width="24" height="58" rx="12"/>
+    <rect x="280" y="756" width="24" height="92" rx="12"/>
+    <rect x="324" y="720" width="24" height="128" rx="12"/>
+    <rect x="368" y="764" width="24" height="84" rx="12"/>
+    <rect x="412" y="704" width="24" height="144" rx="12"/>
+    <rect x="456" y="674" width="24" height="174" rx="12"/>
+    <rect x="500" y="652" width="24" height="196" rx="12"/>
+    <rect x="544" y="680" width="24" height="168" rx="12"/>
+    <rect x="588" y="714" width="24" height="134" rx="12"/>
+    <rect x="632" y="758" width="24" height="90" rx="12"/>
+    <rect x="676" y="730" width="24" height="118" rx="12"/>
+    <rect x="720" y="768" width="24" height="80" rx="12"/>
+    <rect x="764" y="794" width="24" height="54" rx="12"/>
+  </g>
+</svg>

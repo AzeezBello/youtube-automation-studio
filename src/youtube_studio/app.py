@@ -11,6 +11,7 @@ from youtube_studio.config import get_settings
 from youtube_studio.storage import get_engine
 from youtube_studio.storage.orm import Base
 from youtube_studio.ui import MainWindow
+from youtube_studio.ui.brand_assets import BrandAssetsService
 
 
 def create_app(argv: Optional[list[str]] = None) -> QApplication:
@@ -26,6 +27,10 @@ def create_app(argv: Optional[list[str]] = None) -> QApplication:
     app.setApplicationName(settings.app_name)
     app.setApplicationVersion(settings.app_version)
     app.setOrganizationName("YouTube Automation Studio")
+    try:
+        app.setWindowIcon(BrandAssetsService.get_app_icon())
+    except Exception:
+        pass
     return app
 
 

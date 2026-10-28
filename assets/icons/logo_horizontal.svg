@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="960" height="240" viewBox="0 0 960 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="iconBg" cx="35%" cy="25%" r="78%">
+      <stop offset="0%" stop-color="#312E81"/>
+      <stop offset="60%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#050811"/>
+    </radialGradient>
+    <linearGradient id="accentRim" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818CF8"/>
+      <stop offset="50%" stop-color="#38BDF8"/>
+      <stop offset="100%" stop-color="#F59E0B"/>
+    </linearGradient>
+    <linearGradient id="goldPlay" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="60%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#EA580C"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="8" y="8" width="944" height="224" rx="32" fill="#0B0F19" stroke="#1E293B" stroke-width="3"/>
+
+  <!-- Left Icon Emblem -->
+  <rect x="28" y="24" width="192" height="192" rx="44" fill="url(#iconBg)" stroke="url(#accentRim)" stroke-width="5"/>
+  <circle cx="124" cy="112" r="66" stroke="#475569" stroke-width="2" stroke-dasharray="6 4"/>
+  <circle cx="124" cy="112" r="42" fill="#0B0F19" stroke="url(#accentRim)" stroke-width="4"/>
+  <polygon points="112,90 112,134 148,112" fill="url(#goldPlay)"/>
+
+  <!-- Mini Spectrum Bars -->
+  <g fill="url(#accentRim)">
+    <rect x="68" y="182" width="6" height="16" rx="3"/>
+    <rect x="82" y="174" width="6" height="24" rx="3"/>
+    <rect x="96" y="166" width="6" height="32" rx="3"/>
+    <rect x="110" y="158" width="6" height="40" rx="3"/>
+    <rect x="124" y="154" width="6" height="44" rx="3"/>
+    <rect x="138" y="162" width="6" height="36" rx="3"/>
+    <rect x="152" y="170" width="6" height="28" rx="3"/>
+    <rect x="166" y="178" width="6" height="20" rx="3"/>
+    <rect x="180" y="184" width="6" height="14" rx="3"/>
+  </g>
+
+  <!-- Brand Typography -->
+  <text x="252" y="106" fill="#F8FAFC" font-family="-apple-system, BlinkMacSystemFont, Inter, Segoe UI, sans-serif" font-size="44" font-weight="800" letter-spacing="-0.5">YouTube Automation Studio</text>
+  <text x="254" y="148" fill="#38BDF8" font-family="-apple-system, BlinkMacSystemFont, Inter, Segoe UI, sans-serif" font-size="22" font-weight="600" letter-spacing="1.5">HARMONIC MIXING · LOCAL AI · VIDEO &amp; SHORTS ENGINE</text>
+  <rect x="254" y="168" width="260" height="28" rx="14" fill="#1E1B4B" stroke="#6366F1" stroke-width="1.5"/>
+  <text x="272" y="187" fill="#FCD34D" font-family="monospace" font-size="14" font-weight="700">LOCAL-FIRST PRO STUDIO</text>
+</svg>

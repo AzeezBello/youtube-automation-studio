@@ -195,7 +195,7 @@ class TestBackupAndCompliance(unittest.TestCase):
 
         _app = QApplication.instance() or QApplication([])
         win = MainWindow()
-        self.assertEqual(win.nav.count(), 7)
+        self.assertEqual(win.nav.count(), 9)
 
         # Verify tooltips on header buttons and navigation items
         self.assertTrue(len(win.btn_onboarding.toolTip()) > 10)
@@ -206,16 +206,25 @@ class TestBackupAndCompliance(unittest.TestCase):
             self.assertEqual(win.stack.currentIndex(), idx)
 
         # Verify EmptyStateWidget exists on pages
-        for key in ("dashboard", "research", "music_library", "production", "artwork", "mcp_hub"):
+        for key in (
+            "dashboard",
+            "research",
+            "music_library",
+            "script_voice",
+            "production",
+            "timeline_editor",
+            "artwork",
+            "mcp_hub",
+        ):
             page = win.pages[key]
             self.assertTrue(hasattr(page, "empty_state"), f"Missing empty_state on {key}")
         self.assertTrue(hasattr(win.pages["settings"], "backup_empty_state"))
 
-        # Verify Product Tour steps through all 7 workspaces
+        # Verify Product Tour steps through all 9 workspaces
         win.start_product_tour()
         self.assertEqual(win.tour_banner.current_step, 0)
         self.assertEqual(win.stack.currentIndex(), 0)
-        for expected_step in range(1, 7):
+        for expected_step in range(1, 9):
             win.tour_banner.next_step()
             self.assertEqual(win.tour_banner.current_step, expected_step)
             self.assertEqual(win.stack.currentIndex(), expected_step)

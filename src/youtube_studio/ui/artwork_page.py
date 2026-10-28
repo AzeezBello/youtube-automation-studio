@@ -203,6 +203,11 @@ class ArtworkPage(QWidget):
         )
         self.btn_upload_script.clicked.connect(self._on_upload_script_file)
         script_hdr.addWidget(self.btn_upload_script)
+
+        self.btn_open_script_page = QPushButton("✍️ Script Studio →")
+        self.btn_open_script_page.setToolTip("Switch to the dedicated full-page Script & Voiceover Studio.")
+        self.btn_open_script_page.clicked.connect(self._on_open_script_studio)
+        script_hdr.addWidget(self.btn_open_script_page)
         meta_layout.addLayout(script_hdr)
 
         self.script_edit = QPlainTextEdit()
@@ -683,6 +688,16 @@ class ArtworkPage(QWidget):
             )
         except Exception as exc:
             QMessageBox.critical(self, "Voiceover Synthesis Failed", str(exc))
+
+    def _on_open_script_studio(self) -> None:
+        win = self.window()
+        nav_items = getattr(win, "NAV_ITEMS", None)
+        nav_widget = getattr(win, "nav", None)
+        if nav_items and nav_widget:
+            for idx, (_, key, _) in enumerate(nav_items):
+                if key == "script_voice":
+                    nav_widget.setCurrentRow(idx)
+                    break
 
     def _on_pick_reference_image(self) -> None:
         chosen, _ = QFileDialog.getOpenFileName(
