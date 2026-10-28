@@ -205,7 +205,7 @@ class TestBackupAndCompliance(unittest.TestCase):
             win.nav.setCurrentRow(idx)
             self.assertEqual(win.stack.currentIndex(), idx)
 
-        # Verify EmptyStateWidget exists on pages
+        # Verify EmptyStateWidget and CollapsibleLayoutBar exist on pages
         for key in (
             "dashboard",
             "research",
@@ -218,7 +218,31 @@ class TestBackupAndCompliance(unittest.TestCase):
         ):
             page = win.pages[key]
             self.assertTrue(hasattr(page, "empty_state"), f"Missing empty_state on {key}")
+            self.assertTrue(hasattr(page, "collapsible_bar"), f"Missing collapsible_bar on {key}")
+            page.collapsible_bar.set_all_sections_collapsed(True)
+            page.collapsible_bar.expand_everything()
         self.assertTrue(hasattr(win.pages["settings"], "backup_empty_state"))
+
+        # Verify TimelineEditorPage 4-pane collapsible column/row toggles
+        te_page = win.pages["timeline_editor"]
+        te_page.btn_toggle_left_pane.setChecked(False)
+        self.assertTrue(te_page.left_frame.isHidden())
+        te_page.btn_toggle_left_pane.setChecked(True)
+        self.assertFalse(te_page.left_frame.isHidden())
+
+        te_page.btn_toggle_right_pane.setChecked(False)
+        self.assertTrue(te_page.details_frame.isHidden())
+        te_page.btn_toggle_right_pane.setChecked(True)
+
+        te_page.btn_toggle_bottom_dock.setChecked(False)
+        self.assertTrue(te_page.timeline_dock.isHidden())
+        te_page.btn_toggle_bottom_dock.setChecked(True)
+
+        # Verify launching a studio tool from Dashboard auto-collapses the sidebar, and Home restores it
+        win._navigate_from_dashboard(5)
+        self.assertTrue(win.nav.isHidden())
+        win._go_home()
+        self.assertFalse(win.nav.isHidden())
 
         # Verify Product Tour steps through all 9 workspaces
         win.start_product_tour()

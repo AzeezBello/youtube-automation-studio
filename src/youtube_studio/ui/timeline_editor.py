@@ -78,7 +78,7 @@ class VideoStageCanvas(QWidget):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
-        self.setMinimumSize(420, 240)
+        self.setMinimumSize(260, 170)
         self._bg_pixmap: Optional[QPixmap] = None
         self._bg_label: str = "Studio Visual Stage"
         self._now_playing_text: str = "00:00 — Select or Play a Clip"
@@ -867,6 +867,8 @@ class TimelineCanvasEditorDialog(QDialog):
         self._sync_stage_canvas()
 
     def _on_timeline_clip_selected(self, idx: int) -> None:
+        if hasattr(self, "insp_group") and hasattr(self.insp_group, "set_collapsed"):
+            self.insp_group.set_collapsed(False)  # type: ignore[attr-defined]
         self._populate_inspector(idx)
         self._sync_stage_canvas()
 
@@ -1109,19 +1111,38 @@ class TimelineEditorPage(QWidget):
 
         tb_layout.addWidget(QLabel("Channel:"))
         self.channel_combo = QComboBox()
-        self.channel_combo.setMinimumWidth(140)
         self.channel_combo.setToolTip("Select the active YouTube channel profile.")
         self.channel_combo.currentIndexChanged.connect(self._on_channel_changed)
-        tb_layout.addWidget(self.channel_combo)
+        tb_layout.addWidget(self.channel_combo, stretch=1)
 
         tb_layout.addWidget(QLabel("Project:"))
         self.project_combo = QComboBox()
-        self.project_combo.setMinimumWidth(180)
         self.project_combo.setToolTip("Select the production project to edit on the multi-track timeline.")
         self.project_combo.currentIndexChanged.connect(self._on_project_changed)
-        tb_layout.addWidget(self.project_combo)
+        tb_layout.addWidget(self.project_combo, stretch=1)
 
         tb_layout.addStretch(1)
+
+        self.btn_toggle_left_pane = QPushButton("◧ Media")
+        self.btn_toggle_left_pane.setCheckable(True)
+        self.btn_toggle_left_pane.setChecked(True)
+        self.btn_toggle_left_pane.setToolTip("Collapse or expand the Left Media/Effects Browser column.")
+        self.btn_toggle_left_pane.toggled.connect(lambda checked: self.left_frame.setVisible(checked))
+        tb_layout.addWidget(self.btn_toggle_left_pane)
+
+        self.btn_toggle_right_pane = QPushButton("◨ Details")
+        self.btn_toggle_right_pane.setCheckable(True)
+        self.btn_toggle_right_pane.setChecked(True)
+        self.btn_toggle_right_pane.setToolTip("Collapse or expand the Right Details & Clip Inspector column.")
+        self.btn_toggle_right_pane.toggled.connect(lambda checked: self.details_frame.setVisible(checked))
+        tb_layout.addWidget(self.btn_toggle_right_pane)
+
+        self.btn_toggle_bottom_dock = QPushButton("⬓ Timeline")
+        self.btn_toggle_bottom_dock.setCheckable(True)
+        self.btn_toggle_bottom_dock.setChecked(True)
+        self.btn_toggle_bottom_dock.setToolTip("Collapse or expand the Bottom Multi-Track Timeline Dock row.")
+        self.btn_toggle_bottom_dock.toggled.connect(lambda checked: self.timeline_dock.setVisible(checked))
+        tb_layout.addWidget(self.btn_toggle_bottom_dock)
 
         self.aspect_combo = QComboBox()
         self.aspect_combo.addItems(["16:9 Widescreen", "9:16 Vertical Short"])
@@ -1177,6 +1198,7 @@ class TimelineEditorPage(QWidget):
 
         # 1. Left Pane: Media | Audio | Text | Effects | Transitions | Filters
         left_frame = QFrame()
+        self.left_frame = left_frame
         left_frame.setStyleSheet(
             "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 8px; }"
         )
@@ -1325,6 +1347,7 @@ class TimelineEditorPage(QWidget):
 
         # 2. Center Pane: Player (Live Stage Canvas + Bottom Transport Bar)
         player_frame = QFrame()
+        self.player_frame = player_frame
         player_frame.setStyleSheet(
             "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 8px; }"
         )
@@ -1380,6 +1403,7 @@ class TimelineEditorPage(QWidget):
 
         # 3. Right Pane: Details & Clip Inspector (matches Screenshot 1 & 2!)
         details_frame = QFrame()
+        self.details_frame = details_frame
         details_frame.setStyleSheet(
             "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 8px; }"
         )
@@ -1409,6 +1433,7 @@ class TimelineEditorPage(QWidget):
 
         # Selected Clip Precision Inspector
         insp_group = QGroupBox("Selected Clip Inspector")
+        self.insp_group = insp_group
         insp_form = QFormLayout(insp_group)
         insp_form.setSpacing(5)
 
@@ -1471,6 +1496,7 @@ class TimelineEditorPage(QWidget):
 
         # Bottom Full-Width Multi-Track Timeline Dock + Floating EditPilot Action Bar
         timeline_dock = QFrame()
+        self.timeline_dock = timeline_dock
         timeline_dock.setStyleSheet(
             "QFrame { background-color: #0d1017; border: 1px solid #1e293b; border-radius: 8px; }"
         )
@@ -1727,6 +1753,8 @@ class TimelineEditorPage(QWidget):
         self._sync_stage_canvas()
 
     def _on_timeline_clip_selected(self, idx: int) -> None:
+        if hasattr(self, "insp_group") and hasattr(self.insp_group, "set_collapsed"):
+            self.insp_group.set_collapsed(False)  # type: ignore[attr-defined]
         self._populate_inspector(idx)
         self._sync_stage_canvas()
 

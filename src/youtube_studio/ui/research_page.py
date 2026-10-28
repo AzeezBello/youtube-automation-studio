@@ -92,13 +92,13 @@ class ResearchPage(QWidget):
         self.project_combo.currentIndexChanged.connect(self._on_project_changed)
         top_row.addWidget(self.project_combo, stretch=1)
 
-        new_proj_btn = QPushButton("+ Research Project")
+        new_proj_btn = QPushButton("+ Project")
         new_proj_btn.setObjectName("PrimaryButton")
         new_proj_btn.setToolTip("Create a new research project container for the selected channel.")
         new_proj_btn.clicked.connect(self._on_new_research_project)
         top_row.addWidget(new_proj_btn)
 
-        self.sync_vidiq_btn = QPushButton("📈 Sync Channel && Ideas from vidIQ")
+        self.sync_vidiq_btn = QPushButton("📈 Sync vidIQ")
         self.sync_vidiq_btn.setObjectName("AccentButton")
         self.sync_vidiq_btn.setToolTip(
             "Pull your connected YouTube channel metadata, recent video scores, and rising keyword ideas via vidIQ MCP."
@@ -106,7 +106,7 @@ class ResearchPage(QWidget):
         self.sync_vidiq_btn.clicked.connect(self._on_sync_from_vidiq)
         top_row.addWidget(self.sync_vidiq_btn)
 
-        purge_btn = QPushButton("Purge Expired API Data (≤30d)")
+        purge_btn = QPushButton("Purge ≤30d")
         purge_btn.setToolTip(
             "Immediately remove any cached YouTube Data API v3 records older than 30 days."
         )
@@ -123,7 +123,7 @@ class ResearchPage(QWidget):
         url_row.addWidget(QLabel("Video URL:"))
         self.url_import_input = QLineEdit()
         self.url_import_input.setPlaceholderText(
-            "Paste YouTube Video URL or ID (e.g. https://www.youtube.com/watch?v=dQw4w9WgXcQ)…"
+            "Paste YouTube Video URL or ID…"
         )
         self.url_import_input.setToolTip(
             "Paste any YouTube video URL to fetch public metadata (title, description, chapters, tags) "
@@ -131,7 +131,7 @@ class ResearchPage(QWidget):
         )
         url_row.addWidget(self.url_import_input, stretch=1)
 
-        self.import_url_btn = QPushButton("📥 Import from Video URL → Brief && Idea")
+        self.import_url_btn = QPushButton("📥 Import Brief")
         self.import_url_btn.setObjectName("AccentButton")
         self.import_url_btn.setToolTip(
             "Fetch public video title, description, and 00:00 chapters and save as a Research Project Brief & Idea."
@@ -139,7 +139,7 @@ class ResearchPage(QWidget):
         self.import_url_btn.clicked.connect(self._on_import_from_video_url)
         url_row.addWidget(self.import_url_btn)
 
-        self.autopilot_url_btn = QPushButton("🚀 1-Click Project from URL (Auto-Pilot)")
+        self.autopilot_url_btn = QPushButton("🚀 1-Click Project")
         self.autopilot_url_btn.setObjectName("PrimaryButton")
         self.autopilot_url_btn.setToolTip(
             "Import the YouTube URL into a Research Brief and immediately build a complete Production Project "

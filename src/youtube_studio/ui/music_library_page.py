@@ -189,21 +189,20 @@ class MusicLibraryPage(QWidget):
         folder_bar.addWidget(QLabel("Library Folder:"))
 
         self.folder_filter_combo = QComboBox()
-        self.folder_filter_combo.setMinimumWidth(210)
         self.folder_filter_combo.setToolTip(
             "Filter the music library by folder/collection, or select the target folder before uploading audio files."
         )
         self.folder_filter_combo.currentIndexChanged.connect(self._on_folder_filter_changed)
-        folder_bar.addWidget(self.folder_filter_combo)
+        folder_bar.addWidget(self.folder_filter_combo, stretch=1)
 
-        self.create_folder_btn = QPushButton("📁 + Create Folder…")
+        self.create_folder_btn = QPushButton("📁 + Folder…")
         self.create_folder_btn.setToolTip(
             "Create a new named folder inside your Music Library to organize uploaded tracks and stems."
         )
         self.create_folder_btn.clicked.connect(self._on_create_folder_dialog)
         folder_bar.addWidget(self.create_folder_btn)
 
-        self.upload_files_btn = QPushButton("⬆️ Upload Audio Files…")
+        self.upload_files_btn = QPushButton("⬆️ Upload Audio…")
         self.upload_files_btn.setObjectName("PrimaryButton")
         self.upload_files_btn.setToolTip(
             "Select one or more audio files (MP3, WAV, FLAC, M4A, AAC, OGG, AIFF, OPUS) to upload into the active Music Library folder."

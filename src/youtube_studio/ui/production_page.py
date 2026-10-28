@@ -146,15 +146,14 @@ class ProductionPage(QWidget):
         ap_layout.setContentsMargins(12, 8, 12, 8)
         ap_layout.setSpacing(8)
 
-        ap_layout.addWidget(QLabel("Source Tracks:"))
+        ap_layout.addWidget(QLabel("Source:"))
         self.autopilot_source_combo = QComboBox()
-        self.autopilot_source_combo.setMinimumWidth(220)
         self.autopilot_source_combo.setToolTip(
             "Pick a Music Library folder or 'All Indexed Tracks' to automatically build a complete release."
         )
-        ap_layout.addWidget(self.autopilot_source_combo)
+        ap_layout.addWidget(self.autopilot_source_combo, stretch=1)
 
-        self.autopilot_browse_btn = QPushButton("📂 Pick Disk Folder…")
+        self.autopilot_browse_btn = QPushButton("📂 Folder…")
         self.autopilot_browse_btn.setToolTip(
             "Select any folder of audio tracks on your computer and run 1-Click Auto-Pilot immediately."
         )
@@ -162,13 +161,13 @@ class ProductionPage(QWidget):
         ap_layout.addWidget(self.autopilot_browse_btn)
 
         self.autopilot_title_input = QLineEdit()
-        self.autopilot_title_input.setPlaceholderText("Optional release title (auto-named if blank)…")
+        self.autopilot_title_input.setPlaceholderText("Optional release title…")
         self.autopilot_title_input.setToolTip(
             "Leave blank to automatically name the project from the folder or track title."
         )
         ap_layout.addWidget(self.autopilot_title_input, stretch=1)
 
-        self.autopilot_prepare_btn = QPushButton("⚡ 1-Click Auto-Setup (Tracks + Trim + Sort + SEO + Art)")
+        self.autopilot_prepare_btn = QPushButton("⚡ Auto-Setup")
         self.autopilot_prepare_btn.setObjectName("AccentButton")
         self.autopilot_prepare_btn.setToolTip(
             "Automatically creates the project, adds all tracks, trims silence, harmonically sorts by BPM/Key, "
@@ -177,7 +176,7 @@ class ProductionPage(QWidget):
         self.autopilot_prepare_btn.clicked.connect(lambda: self.run_express_autopilot(render_video=False))
         ap_layout.addWidget(self.autopilot_prepare_btn)
 
-        self.autopilot_render_btn = QPushButton("🚀 1-Click Auto-Produce Full Video + Short")
+        self.autopilot_render_btn = QPushButton("🚀 1-Click Produce")
         self.autopilot_render_btn.setObjectName("PrimaryButton")
         self.autopilot_render_btn.setToolTip(
             "End-to-end automation in 1 click: scans/loads tracks, creates project, trims silence, "
@@ -247,21 +246,21 @@ class ProductionPage(QWidget):
         left_col.addLayout(track_btns_top)
 
         track_btns_bottom = QHBoxLayout()
-        auto_cue_btn = QPushButton("Auto-Cue Silence Trim")
+        auto_cue_btn = QPushButton("Auto-Cue Trim")
         auto_cue_btn.setToolTip(
             "Automatically detect and trim leading/trailing silence on all tracks in this project."
         )
         auto_cue_btn.clicked.connect(self._on_auto_cue_trim)
         track_btns_bottom.addWidget(auto_cue_btn)
 
-        harmonic_btn = QPushButton("Smart Harmonic Sort (BPM+Key)")
+        harmonic_btn = QPushButton("Harmonic Sort")
         harmonic_btn.setToolTip(
             "Reorder tracks for smooth Camelot Wheel harmonic compatibility and gradual tempo progression."
         )
         harmonic_btn.clicked.connect(self._on_harmonic_sort)
         track_btns_bottom.addWidget(harmonic_btn)
 
-        self.open_timeline_editor_btn = QPushButton("🎬 Open Studio Timeline & Canvas Editor…")
+        self.open_timeline_editor_btn = QPushButton("🎬 Video Studio…")
         self.open_timeline_editor_btn.setObjectName("PrimaryButton")
         self.open_timeline_editor_btn.setToolTip(
             "Open the visual nonlinear multi-track timeline & 16:9 / 9:16 video stage canvas editor "
@@ -289,6 +288,8 @@ class ProductionPage(QWidget):
         self.tracks_table = QTableWidget(0, 7)
         self.tracks_table.setAlternatingRowColors(True)
         self.tracks_table.verticalHeader().setVisible(False)
+        self.tracks_table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.tracks_table.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.tracks_table.setToolTip(
             "Project timeline tracks. Select any row to edit its trim, gain, fade, and transition settings on the right."
         )
@@ -296,11 +297,14 @@ class ProductionPage(QWidget):
             ["#", "Track", "BPM / Key", "Trim (ms)", "Gain (dB)", "Fade In/Out", "Transition"]
         )
         hdr = self.tracks_table.horizontalHeader()
-        hdr.setMinimumSectionSize(34)
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setMinimumSectionSize(28)
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        self.tracks_table.setColumnWidth(0, 32)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        for col_idx in range(2, 7):
-            hdr.setSectionResizeMode(col_idx, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hdr.setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)
+        for hidden_col in (3, 4, 5):
+            self.tracks_table.setColumnHidden(hidden_col, True)
         self.tracks_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.tracks_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.tracks_table.itemSelectionChanged.connect(self._on_track_selected)
@@ -311,6 +315,7 @@ class ProductionPage(QWidget):
         # Right column: Track Editor + Visual FX + Chapter Preview + Produce / Shorts buttons
         right_col = QVBoxLayout()
         editor_group = QGroupBox("Selected Track & Harmonic Transition Settings")
+        self.editor_group = editor_group
         form = QFormLayout(editor_group)
 
         self.trim_start_spin = QSpinBox()
@@ -1316,6 +1321,8 @@ class ProductionPage(QWidget):
         match = next((t for t in tracks if t.id == track_id), None)
         if not match:
             return
+        if hasattr(self, "editor_group") and hasattr(self.editor_group, "set_collapsed"):
+            self.editor_group.set_collapsed(False)  # type: ignore[attr-defined]
         self.trim_start_spin.setValue(match.trim_start_ms)
         self.trim_end_spin.setValue(match.trim_end_ms or 0)
         self.gain_spin.setValue(match.gain_db)

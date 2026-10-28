@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 
 
 class EmptyStateWidget(QFrame):
-    """Friendly empty-state guide card displayed on blank screens before data is added."""
+    """Compact, collapsible empty-state guide banner that stays out of the way of primary tools."""
 
     def __init__(
         self,
@@ -35,14 +35,23 @@ class EmptyStateWidget(QFrame):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("EmptyStateCard")
+        self._details_expanded = False
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(6)
 
         header_row = QHBoxLayout()
+        header_row.setSpacing(8)
+
+        self.toggle_btn = QPushButton("▶")
+        self.toggle_btn.setFixedSize(24, 24)
+        self.toggle_btn.setToolTip("Show or hide quick-start tips for this workspace.")
+        self.toggle_btn.clicked.connect(self.toggle_details)
+        header_row.addWidget(self.toggle_btn)
+
         title_lbl = QLabel(f"✦  {title}")
         title_lbl.setObjectName("EmptyStateTitle")
-        title_lbl.setFont(QFont("", 14, QFont.Weight.Bold))
+        title_lbl.setFont(QFont("", 12, QFont.Weight.Bold))
         header_row.addWidget(title_lbl, stretch=1)
 
         if action_label and on_action:
@@ -71,20 +80,34 @@ class EmptyStateWidget(QFrame):
 
         layout.addLayout(header_row)
 
+        # Collapsible details body (collapsed by default to keep screens clean and uncluttered)
+        self.details_container = QWidget(self)
+        details_layout = QVBoxLayout(self.details_container)
+        details_layout.setContentsMargins(28, 2, 4, 2)
+        details_layout.setSpacing(4)
+
         desc_lbl = QLabel(description)
         desc_lbl.setObjectName("EmptyStateDesc")
         desc_lbl.setWordWrap(True)
-        layout.addWidget(desc_lbl)
+        details_layout.addWidget(desc_lbl)
 
         if tips:
-            tips_html = "<ul style='margin-top:4px; margin-bottom:2px;'>" + "".join(
+            tips_html = "<ul style='margin-top:2px; margin-bottom:2px;'>" + "".join(
                 f"<li>{tip}</li>" for tip in tips
             ) + "</ul>"
             tips_lbl = QLabel(tips_html)
             tips_lbl.setObjectName("EmptyStateTips")
             tips_lbl.setWordWrap(True)
             tips_lbl.setTextFormat(Qt.TextFormat.RichText)
-            layout.addWidget(tips_lbl)
+            details_layout.addWidget(tips_lbl)
+
+        self.details_container.setVisible(False)
+        layout.addWidget(self.details_container)
+
+    def toggle_details(self) -> None:
+        self._details_expanded = not self._details_expanded
+        self.details_container.setVisible(self._details_expanded)
+        self.toggle_btn.setText("▼" if self._details_expanded else "▶")
 
 
 class MetricCard(QFrame):
@@ -104,8 +127,8 @@ class MetricCard(QFrame):
             self.setToolTip(tooltip)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(4)
+        layout.setContentsMargins(12, 10, 12, 10)
+        layout.setSpacing(2)
 
         self.title_label = QLabel(title)
         self.title_label.setObjectName("MetricTitle")
@@ -113,7 +136,7 @@ class MetricCard(QFrame):
 
         self.value_label = QLabel(value)
         self.value_label.setObjectName("MetricValue")
-        self.value_label.setFont(QFont("", 20, QFont.Weight.Bold))
+        self.value_label.setFont(QFont("", 18, QFont.Weight.Bold))
         layout.addWidget(self.value_label)
 
         self.subtitle_label = QLabel(subtitle)
