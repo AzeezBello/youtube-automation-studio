@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from typing import Callable, Optional
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QFont, QResizeEvent
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QFont, QResizeEvent
 from PySide6.QtWidgets import (
     QApplication,
     QBoxLayout,
+    QComboBox,
     QFrame,
     QGroupBox,
     QHBoxLayout,
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSizePolicy,
@@ -153,11 +155,13 @@ class DashboardPage(QWidget):
 
         tool_specs = [
             ("🔗\nURL to Brief", "Import YouTube URL metadata & chapters into a Research Brief.", 1),
+            ("🎵\nMusic Library", "Scan local audio folders, BPM, Camelot keys & duplicates.", 2),
+            ("✍️\nScript & Voice", "Draft Hook → Outline → Script & synthesize Male/Female TTS.", 3),
             ("✂️\nLong video to shorts", "Auto-clip peak 30s 9:16 vertical Shorts.", 4),
-            ("✍️\nAI Script & Hook", "Draft 1. Hook → 2. Outline → 3. Full Narration Script.", 3),
-            ("🎙\nAI Voiceover", "Synthesize local Male/Female voiceovers with speed control.", 3),
-            ("🏆\nTitle Scorer", "Rank 5 title candidates by transparent length, keyword & tone rules.", 6),
             ("🚀\n1-Click Auto-Video", "End-to-end autopilot from audio folder or YouTube URL.", 4),
+            ("🏆\nTitle Scorer", "Rank 5 title candidates by transparent length, keyword & tone rules.", 6),
+            ("🔌\nMCP Hub", "Connect AI agents via the built-in Studio MCP Server.", 7),
+            ("⚙️\nSettings", "Credential Vault API keys, SQLite backups & Compliance Gate.", 8),
         ]
         for label_txt, tip_txt, target_idx in tool_specs:
             btn = QPushButton(label_txt)
@@ -359,7 +363,7 @@ class MainWindow(QMainWindow):
         self._apply_initial_screen_geometry()
         self._update_responsive_mode(force=True)
         self.statusBar().showMessage(
-            "Tip: Click '☰' to toggle the sidebar, '🏠 Home' for the Launchpad, or click any section header (▼/▶) to collapse it."
+            "Tip: Use '🏠 Home', the top Workspace selector, or the '◫' layout menu to switch tools — no sidebar clutter!"
         )
 
         # Automatically trigger onboarding wizard on first interactive launch
@@ -370,14 +374,14 @@ class MainWindow(QMainWindow):
         screen = QApplication.primaryScreen()
         if screen is not None:
             avail = screen.availableGeometry()
-            target_w = min(1160, max(380, int(avail.width() * 0.90)))
-            target_h = min(720, max(500, int(avail.height() * 0.86)))
+            target_w = min(1220, max(380, int(avail.width() * 0.92)))
+            target_h = min(740, max(500, int(avail.height() * 0.88)))
             self.resize(target_w, target_h)
             x = avail.x() + max(0, (avail.width() - target_w) // 2)
             y = avail.y() + max(0, (avail.height() - target_h) // 2)
             self.move(x, y)
         else:
-            self.resize(1100, 680)
+            self.resize(1160, 700)
 
     def _build_ui(self) -> None:
         central = QWidget()
@@ -387,85 +391,134 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Top Header Bar with Sidebar Toggle (☰), Quick Home Button (🏠), Brand Emblem, Theme, Onboarding & Tour
+        # Sidebar-free Top Studio Bar:
+        # Left: [🏠 Home] [Workspace ▾] Auto saved | Center: Active Project / Workspace Title | Right: [◫ ▾] [⌨] [💎 Local Pro] [↗ Share] [↑ Export]
         header = QFrame()
         header.setObjectName("TopHeaderBar")
+        header.setStyleSheet(
+            "QFrame#TopHeaderBar { background-color: #0e1015; border-bottom: 1px solid #1e2433; }"
+        )
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(12, 7, 12, 7)
+        header_layout.setContentsMargins(12, 6, 12, 6)
         header_layout.setSpacing(8)
 
-        self.btn_menu_toggle = QPushButton("☰")
-        self.btn_menu_toggle.setFixedWidth(34)
-        self.btn_menu_toggle.setToolTip("Collapse or expand the left navigation sidebar for maximum workspace room.")
-        self.btn_menu_toggle.clicked.connect(self._toggle_nav_visibility)
-        header_layout.addWidget(self.btn_menu_toggle)
+        self.brand_icon_label = QLabel()
+        self.brand_icon_label.setPixmap(BrandAssetsService.get_header_icon_pixmap(22))
+        self.brand_icon_label.setFixedSize(22, 22)
+        self.brand_icon_label.setToolTip("YouTube Automation Studio")
+        header_layout.addWidget(self.brand_icon_label)
 
         self.btn_home = QPushButton("🏠 Home")
         self.btn_home.setToolTip("Return to the Home Launchpad.")
         self.btn_home.clicked.connect(self._go_home)
         header_layout.addWidget(self.btn_home)
 
-        self.brand_icon_label = QLabel()
-        self.brand_icon_label.setPixmap(BrandAssetsService.get_header_icon_pixmap(24))
-        self.brand_icon_label.setFixedSize(24, 24)
-        self.brand_icon_label.setToolTip("YouTube Automation Studio — Official App Emblem")
-        header_layout.addWidget(self.brand_icon_label)
+        self.workspace_combo = QComboBox()
+        self.workspace_combo.setMinimumWidth(155)
+        self.workspace_combo.setToolTip("Switch directly to any Studio Workspace (sidebar-free navigation).")
+        for label, _, _ in self.NAV_ITEMS:
+            self.workspace_combo.addItem(label)
+        self.workspace_combo.currentIndexChanged.connect(self._on_workspace_combo_changed)
+        header_layout.addWidget(self.workspace_combo)
 
+        self.lbl_autosave_top = QLabel("Auto saved")
+        self.lbl_autosave_top.setStyleSheet("color: #64748b; font-size: 11px; border: none;")
+        header_layout.addWidget(self.lbl_autosave_top)
+
+        header_layout.addStretch(1)
+
+        # Centered Project / Workspace Title (matches '1028 (1)' in the center of the top bar)
         self.brand_title = QLabel("YouTube Automation Studio")
-        self.brand_title.setFont(QFont("", 13, QFont.Weight.Bold))
-        self.brand_title.setStyleSheet("color: #f8fafc;")
+        self.brand_title.setFont(QFont("", 12, QFont.Weight.Bold))
+        self.brand_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.brand_title.setStyleSheet("color: #f8fafc; border: none;")
         header_layout.addWidget(self.brand_title)
 
-        self.version_badge = QLabel(f"v{__version__}")
-        self.version_badge.setObjectName("VersionBadge")
-        header_layout.addWidget(self.version_badge)
-        header_layout.addStretch()
+        header_layout.addStretch(1)
 
+        # Layout & View Dropdown Button (◫ ▾)
+        self.btn_menu_toggle = QPushButton("◫ ▾")
+        self.btn_menu_toggle.setToolTip("Toggle workspace panes (Media, Details, Timeline), Theme, or Setup Wizard.")
+        layout_menu = QMenu(self)
+        act_left = layout_menu.addAction("◧ Toggle Left Media Browser")
+        act_left.triggered.connect(lambda: self._toggle_timeline_pane("left"))
+        act_right = layout_menu.addAction("◨ Toggle Right Details Pane")
+        act_right.triggered.connect(lambda: self._toggle_timeline_pane("right"))
+        act_bottom = layout_menu.addAction("⬓ Toggle Bottom Timeline Dock")
+        act_bottom.triggered.connect(lambda: self._toggle_timeline_pane("bottom"))
+        layout_menu.addSeparator()
+        act_theme = layout_menu.addAction("☀️ / 🌙 Toggle Light / Dark Theme")
+        act_theme.triggered.connect(self.toggle_theme)
+        act_setup = layout_menu.addAction("✦ Onboarding Setup Wizard…")
+        act_setup.triggered.connect(self.open_onboarding_dialog)
+        self.btn_menu_toggle.setMenu(layout_menu)
+        header_layout.addWidget(self.btn_menu_toggle)
+
+        # Hidden theme/onboarding buttons retained as attributes for backward compatibility
         self.btn_theme = QPushButton("☀️ Light")
-        self.btn_theme.setToolTip("Switch between Dark Mode and Light Mode.")
-        self.btn_theme.clicked.connect(self.toggle_theme)
-        header_layout.addWidget(self.btn_theme)
-
+        self.btn_theme.setVisible(False)
         self.btn_onboarding = QPushButton("✦ Setup")
-        self.btn_onboarding.setToolTip(
-            "Open the step-by-step Onboarding Flow to configure your channel, hardware profile, and API key."
-        )
-        self.btn_onboarding.clicked.connect(self.open_onboarding_dialog)
-        header_layout.addWidget(self.btn_onboarding)
+        self.btn_onboarding.setVisible(False)
 
-        self.btn_tour = QPushButton("🧭 Tour")
-        self.btn_tour.setObjectName("PrimaryButton")
+        # Keyboard / Guided Tour Button (⌨)
+        self.btn_tour = QPushButton("⌨")
+        self.btn_tour.setFixedWidth(32)
         self.btn_tour.setToolTip(
             "Launch the interactive 9-step Guided Product Tour across all studio workspaces."
         )
         self.btn_tour.clicked.connect(self.start_product_tour)
         header_layout.addWidget(self.btn_tour)
 
+        # Pro Pill Badge
+        self.version_badge = QLabel("💎 Local Pro")
+        self.version_badge.setObjectName("VersionBadge")
+        self.version_badge.setStyleSheet(
+            "background-color: #1e1b4b; color: #c4b5fd; padding: 4px 10px; "
+            "border-radius: 6px; font-size: 11px; font-weight: bold; border: 1px solid #4338ca;"
+        )
+        header_layout.addWidget(self.version_badge)
+
+        # Share Button (↗ Share)
+        self.btn_share = QPushButton("↗ Share")
+        self.btn_share.setToolTip("Open the output package folder in Finder / File Explorer.")
+        self.btn_share.clicked.connect(self._on_share_clicked)
+        header_layout.addWidget(self.btn_share)
+
+        # Cyan Export Button (↑ Export)
+        self.btn_export_main = QPushButton("↑ Export")
+        self.btn_export_main.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_export_main.setStyleSheet(
+            "QPushButton { background-color: #00d4e5; color: #042f2e; font-weight: bold; "
+            "padding: 5px 14px; border-radius: 6px; border: none; } "
+            "QPushButton:hover { background-color: #22d3ee; }"
+        )
+        self.btn_export_main.setToolTip(
+            "Export active project timeline (.fcpxml / .edl / .csv) or render ready-to-upload video package."
+        )
+        self.btn_export_main.clicked.connect(self._on_export_main_clicked)
+        header_layout.addWidget(self.btn_export_main)
+
         outer.addWidget(header)
 
-        # Main workspace area (Collapsible Left Sidebar + Scrollable Content column)
+        # Main workspace area (100% Full-Width Content — NO Left Sidebar!)
         self.workspace_row = QBoxLayout(QBoxLayout.Direction.LeftToRight)
         self.workspace_row.setContentsMargins(0, 0, 0, 0)
         self.workspace_row.setSpacing(0)
 
-        # Clean, slim navigation sidebar (collapsible with ☰; auto-hides when launching tools from Home)
-        self.nav = QListWidget()
+        # Hidden QListWidget kept off-layout purely for programmatic state/signal compatibility
+        self.nav = QListWidget(self)
         self.nav.setObjectName("SideNav")
-        self.nav.setFixedWidth(164)
-        self.nav.setSpacing(2)
-        self.nav.setToolTip("Switch workspaces (click ☰ above to collapse sidebar).")
+        self.nav.setVisible(False)
         for label, _, tip in self.NAV_ITEMS:
             item = QListWidgetItem(label)
             item.setToolTip(tip)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             self.nav.addItem(item)
         self.nav.setCurrentRow(0)
         self.nav.currentRowChanged.connect(self._on_nav_changed)
-        self.workspace_row.addWidget(self.nav)
 
-        # Right side: Guided Product Tour Banner + Scroll-Wrapped Stacked Pages
+        # Full-width content container: Guided Product Tour Banner + Scroll-Wrapped Stacked Pages
         right_container = QVBoxLayout()
-        right_container.setContentsMargins(8, 6, 8, 6)
+        right_container.setContentsMargins(6, 4, 6, 4)
         right_container.setSpacing(4)
 
         self.tour_banner = ProductTourBanner(
@@ -505,18 +558,44 @@ class MainWindow(QMainWindow):
         outer.addLayout(self.workspace_row, stretch=1)
 
     def _go_home(self) -> None:
-        self.nav.setVisible(True)
         self.nav.setCurrentRow(0)
 
     def _navigate_from_dashboard(self, index: int) -> None:
-        """When launching a studio tool from the Home Launchpad, auto-collapse the sidebar for full-screen focus."""
         if 0 <= index < self.nav.count():
             self.nav.setCurrentRow(index)
-            if index > 0 and not self.tour_banner.isVisible():
-                self.nav.setVisible(False)
+
+    def _on_workspace_combo_changed(self, index: int) -> None:
+        if 0 <= index < self.nav.count() and self.nav.currentRow() != index:
+            self.nav.setCurrentRow(index)
 
     def _toggle_nav_visibility(self) -> None:
-        self.nav.setVisible(not self.nav.isVisible())
+        """Sidebar is permanently removed; open the workspace switcher dropdown instead."""
+        self.workspace_combo.showPopup()
+
+    def _toggle_timeline_pane(self, which: str) -> None:
+        te = self.pages.get("timeline_editor")
+        if te is None:
+            return
+        if which == "left" and hasattr(te, "btn_toggle_left_pane"):
+            te.btn_toggle_left_pane.toggle()  # type: ignore[attr-defined]
+        elif which == "right" and hasattr(te, "btn_toggle_right_pane"):
+            te.btn_toggle_right_pane.toggle()  # type: ignore[attr-defined]
+        elif which == "bottom" and hasattr(te, "btn_toggle_bottom_dock"):
+            te.btn_toggle_bottom_dock.toggle()  # type: ignore[attr-defined]
+
+    def _on_share_clicked(self) -> None:
+        out_dir = get_settings().resolved_output_dir()
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(out_dir)))
+
+    def _on_export_main_clicked(self) -> None:
+        # If not currently on Video Studio or Auto-Pilot, trigger Video Studio export if a project exists, else jump to Video Studio
+        te = self.pages.get("timeline_editor")
+        if self.stack.currentIndex() == 5 and te is not None and hasattr(te, "_on_export_timeline_package"):
+            te._on_export_timeline_package()  # type: ignore[attr-defined]
+        else:
+            self.nav.setCurrentRow(5)
+            if te is not None and hasattr(te, "_on_export_timeline_package"):
+                te._on_export_timeline_package()  # type: ignore[attr-defined]
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -527,28 +606,9 @@ class MainWindow(QMainWindow):
         if not force and self._is_mobile_mode == is_mobile:
             return
         self._is_mobile_mode = is_mobile
-
-        if is_mobile:
-            self.workspace_row.setDirection(QBoxLayout.Direction.TopToBottom)
-            self.nav.setFlow(QListView.Flow.LeftToRight)
-            self.nav.setWrapping(False)
-            self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            self.nav.setMinimumWidth(0)
-            self.nav.setMaximumWidth(16777215)
-            self.nav.setFixedHeight(44)
-            self.version_badge.setVisible(False)
-            self.brand_title.setText("YT Studio")
-        else:
-            self.workspace_row.setDirection(QBoxLayout.Direction.LeftToRight)
-            self.nav.setFlow(QListView.Flow.TopToBottom)
-            self.nav.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            self.nav.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            self.nav.setFixedWidth(164)
-            self.nav.setMinimumHeight(0)
-            self.nav.setMaximumHeight(16777215)
-            self.version_badge.setVisible(True)
-            self.brand_title.setText("YouTube Automation Studio")
+        self.nav.setVisible(False)
+        self.version_badge.setVisible(not is_mobile)
+        self.lbl_autosave_top.setVisible(not is_mobile)
 
         for page in self.pages.values():
             apply_responsive_mode_to_page(page, is_mobile)
@@ -579,15 +639,21 @@ class MainWindow(QMainWindow):
     def _build_menu(self) -> None:
         menubar = self.menuBar()
         file_menu = menubar.addMenu("&File")
+        export_action = QAction("↑ &Export Project / Package…", self)
+        export_action.triggered.connect(self._on_export_main_clicked)
+        file_menu.addAction(export_action)
+        file_menu.addSeparator()
         quit_action = QAction("E&xit", self)
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
 
-        view_menu = menubar.addMenu("&View")
-        toggle_nav_action = QAction("Toggle &Sidebar (☰)", self)
-        toggle_nav_action.triggered.connect(self._toggle_nav_visibility)
-        view_menu.addAction(toggle_nav_action)
+        workspace_menu = menubar.addMenu("&Workspace")
+        for idx, (label, _, _) in enumerate(self.NAV_ITEMS):
+            act = QAction(label, self)
+            act.triggered.connect(lambda _checked=False, i=idx: self.nav.setCurrentRow(i))
+            workspace_menu.addAction(act)
 
+        view_menu = menubar.addMenu("&View")
         dark_action = QAction("🌙 &Dark Mode", self)
         dark_action.triggered.connect(lambda: self.apply_theme("dark"))
         view_menu.addAction(dark_action)
@@ -632,7 +698,7 @@ class MainWindow(QMainWindow):
         return dlg
 
     def start_product_tour(self) -> None:
-        self.nav.setVisible(True)
+        self.nav.setVisible(False)
         self.tour_banner.start_tour(0)
 
     def _select_nav_from_tour(self, index: int) -> None:
@@ -647,10 +713,22 @@ class MainWindow(QMainWindow):
     def _on_nav_changed(self, index: int) -> None:
         if 0 <= index < self.stack.count():
             self.stack.setCurrentIndex(index)
-            key = self.NAV_ITEMS[index][1]
+            if hasattr(self, "workspace_combo") and self.workspace_combo.currentIndex() != index:
+                self.workspace_combo.blockSignals(True)
+                self.workspace_combo.setCurrentIndex(index)
+                self.workspace_combo.blockSignals(False)
+            label, key, _ = self.NAV_ITEMS[index]
             page = self.pages.get(key)
             if hasattr(page, "refresh"):
                 page.refresh()  # type: ignore[attr-defined]
+            # Update centered header title to active project name in Video Studio, or workspace name otherwise
+            if key == "timeline_editor" and hasattr(page, "project_combo"):
+                proj_txt = page.project_combo.currentText().strip()  # type: ignore[attr-defined]
+                self.brand_title.setText(proj_txt if proj_txt else "Video Studio — 1028 (1)")
+            elif key == "dashboard":
+                self.brand_title.setText("YouTube Automation Studio")
+            else:
+                self.brand_title.setText(label.strip())
 
     def _show_about(self) -> None:
         settings = get_settings()

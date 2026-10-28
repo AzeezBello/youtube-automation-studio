@@ -1093,83 +1093,15 @@ class TimelineEditorPage(QWidget):
         from youtube_studio.ui.components import EmptyStateWidget
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(12, 10, 12, 10)
+        root.setContentsMargins(8, 6, 8, 6)
         root.setSpacing(8)
 
-        # Top Pro Studio Bar: Auto-saved | Channel & Project Title | Ratio | Pro Badge | Export Button
-        top_bar = QFrame()
-        top_bar.setStyleSheet(
-            "QFrame { background-color: #111520; border: 1px solid #1e293b; border-radius: 8px; }"
-        )
-        tb_layout = QHBoxLayout(top_bar)
-        tb_layout.setContentsMargins(12, 6, 12, 6)
-        tb_layout.setSpacing(8)
-
+        # Hidden status/export widgets retained for programmatic compatibility while MainWindow hosts the unified top bar
         self.lbl_autosave = QLabel("● Auto saved: Ready")
-        self.lbl_autosave.setStyleSheet("color: #64748b; font-size: 11px; border: none;")
-        tb_layout.addWidget(self.lbl_autosave)
-
-        tb_layout.addWidget(QLabel("Channel:"))
-        self.channel_combo = QComboBox()
-        self.channel_combo.setToolTip("Select the active YouTube channel profile.")
-        self.channel_combo.currentIndexChanged.connect(self._on_channel_changed)
-        tb_layout.addWidget(self.channel_combo, stretch=1)
-
-        tb_layout.addWidget(QLabel("Project:"))
-        self.project_combo = QComboBox()
-        self.project_combo.setToolTip("Select the production project to edit on the multi-track timeline.")
-        self.project_combo.currentIndexChanged.connect(self._on_project_changed)
-        tb_layout.addWidget(self.project_combo, stretch=1)
-
-        tb_layout.addStretch(1)
-
-        self.btn_toggle_left_pane = QPushButton("◧ Media")
-        self.btn_toggle_left_pane.setCheckable(True)
-        self.btn_toggle_left_pane.setChecked(True)
-        self.btn_toggle_left_pane.setToolTip("Collapse or expand the Left Media/Effects Browser column.")
-        self.btn_toggle_left_pane.toggled.connect(lambda checked: self.left_frame.setVisible(checked))
-        tb_layout.addWidget(self.btn_toggle_left_pane)
-
-        self.btn_toggle_right_pane = QPushButton("◨ Details")
-        self.btn_toggle_right_pane.setCheckable(True)
-        self.btn_toggle_right_pane.setChecked(True)
-        self.btn_toggle_right_pane.setToolTip("Collapse or expand the Right Details & Clip Inspector column.")
-        self.btn_toggle_right_pane.toggled.connect(lambda checked: self.details_frame.setVisible(checked))
-        tb_layout.addWidget(self.btn_toggle_right_pane)
-
-        self.btn_toggle_bottom_dock = QPushButton("⬓ Timeline")
-        self.btn_toggle_bottom_dock.setCheckable(True)
-        self.btn_toggle_bottom_dock.setChecked(True)
-        self.btn_toggle_bottom_dock.setToolTip("Collapse or expand the Bottom Multi-Track Timeline Dock row.")
-        self.btn_toggle_bottom_dock.toggled.connect(lambda checked: self.timeline_dock.setVisible(checked))
-        tb_layout.addWidget(self.btn_toggle_bottom_dock)
-
-        self.aspect_combo = QComboBox()
-        self.aspect_combo.addItems(["16:9 Widescreen", "9:16 Vertical Short"])
-        self.aspect_combo.setToolTip("Switch the Player stage monitor between 16:9 YouTube and 9:16 Vertical Short.")
-        self.aspect_combo.currentIndexChanged.connect(self._sync_stage_canvas)
-        tb_layout.addWidget(self.aspect_combo)
-
-        pro_badge = QLabel("💎 Local Pro")
-        pro_badge.setStyleSheet(
-            "background-color: #1e1b4b; color: #c4b5fd; padding: 4px 10px; "
-            "border-radius: 6px; font-size: 11px; font-weight: bold; border: 1px solid #4338ca;"
-        )
-        tb_layout.addWidget(pro_badge)
-
+        self.lbl_autosave.setVisible(False)
         self.btn_export_top = QPushButton("↗ Export")
-        self.btn_export_top.setStyleSheet(
-            "QPushButton { background-color: #06b6d4; color: #042f2e; font-weight: bold; "
-            "padding: 5px 14px; border-radius: 6px; border: none; } "
-            "QPushButton:hover { background-color: #22d3ee; }"
-        )
-        self.btn_export_top.setToolTip(
-            "Export timeline XML (.fcpxml), EDL (.edl), and CSV clip list or run full video export."
-        )
         self.btn_export_top.clicked.connect(self._on_export_timeline_package)
-        tb_layout.addWidget(self.btn_export_top)
-
-        root.addWidget(top_bar)
+        self.btn_export_top.setVisible(False)
 
         # Empty State Widget (shown when no clips exist in the current project)
         self.empty_state = EmptyStateWidget(
@@ -1179,7 +1111,7 @@ class TimelineEditorPage(QWidget):
                 "or click '✦ EditPilot' to auto-populate and harmonic-sort your timeline."
             ),
             tips=[
-                "<b>4-Pane Studio Layout:</b> Left = Media/Audio/Text/Effects/Transitions/Filters browser; Center = Live Player; Right = Details & Clip Inspector; Bottom = Multi-Track Timeline.",
+                "<b>4-Pane Studio Layout:</b> Left = Media/Audio/Text/Effects/Transitions/Captions/Filters browser; Center = Player-Timeline 01; Right = Details & Clip Inspector; Bottom = Multi-Track Timeline.",
                 "<b>Precision Trim Handles:</b> Drag the yellow left/right handles on any timeline clip or click 'Set In / Set Out at Playhead'.",
                 "<b>AI Clipper & Export:</b> Extract peak 30s 9:16 Shorts or export .fcpxml / .edl / .csv timelines.",
             ],
@@ -1192,22 +1124,24 @@ class TimelineEditorPage(QWidget):
         )
         root.addWidget(self.empty_state)
 
-        # Upper 3-Pane Split: Left = Tabbed Asset/FX Browser | Center = Player | Right = Details & Inspector
+        # Upper 3-Pane Split: Left = Tabbed Asset/FX Browser | Center = Player-Timeline 01 | Right = Details & Inspector
         upper_row = QHBoxLayout()
         upper_row.setSpacing(8)
 
-        # 1. Left Pane: Media | Audio | Text | Effects | Transitions | Filters
+        # 1. Left Pane: Media | Audio | Text | Effects | Transitions | Captions | Filters
         left_frame = QFrame()
         self.left_frame = left_frame
         left_frame.setStyleSheet(
-            "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 8px; }"
+            "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 10px; }"
         )
         left_layout = QVBoxLayout(left_frame)
         left_layout.setContentsMargins(8, 8, 8, 8)
         left_layout.setSpacing(6)
 
         self.asset_tabs = QTabWidget()
-        self.asset_tabs.setToolTip("Browse Media, Audio, Text overlays, Visualizer Effects, Transitions, and Style Filters.")
+        self.asset_tabs.setToolTip(
+            "Browse Media, Audio, Text overlays, Visualizer Effects, Transitions, Captions, and Style Filters."
+        )
 
         # Tab 1: Media (with left sub-categories + Import dropzone + Generate/Voiceover tiles + AI Clipper bar)
         media_tab = QWidget()
@@ -1330,7 +1264,24 @@ class TimelineEditorPage(QWidget):
         trans_layout.addStretch(1)
         self.asset_tabs.addTab(trans_tab, "⋈ Transitions")
 
-        # Tab 6: Filters / Niche Presets
+        # Tab 6: Captions & Subtitles (.srt)
+        cap_tab = QWidget()
+        cap_layout = QVBoxLayout(cap_tab)
+        lbl_cap = QLabel(
+            "<b>Auto-Synced Track & Voiceover Captions (.srt)</b><br>"
+            "Generates time-coded subtitles from your timeline chapters and Script & Voice studio."
+        )
+        lbl_cap.setWordWrap(True)
+        lbl_cap.setStyleSheet("color: #cbd5e1; font-size: 11px; border: none;")
+        cap_layout.addWidget(lbl_cap)
+
+        btn_open_captions = QPushButton("💬 Open Script & Voiceover Captions →")
+        btn_open_captions.clicked.connect(lambda: self._navigate_to_page("script_voice"))
+        cap_layout.addWidget(btn_open_captions)
+        cap_layout.addStretch(1)
+        self.asset_tabs.addTab(cap_tab, "💬 Captions")
+
+        # Tab 7: Filters / Niche Presets
         filter_tab = QWidget()
         filter_layout = QVBoxLayout(filter_tab)
         self.filter_preset_list = QListWidget()
@@ -1345,23 +1296,49 @@ class TimelineEditorPage(QWidget):
         left_layout.addWidget(self.asset_tabs)
         upper_row.addWidget(left_frame, stretch=3)
 
-        # 2. Center Pane: Player (Live Stage Canvas + Bottom Transport Bar)
+        # 2. Center Pane: Player-Timeline 01 (Live Stage Canvas + Bottom Transport Bar)
         player_frame = QFrame()
         self.player_frame = player_frame
         player_frame.setStyleSheet(
-            "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 8px; }"
+            "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 10px; }"
         )
         player_layout = QVBoxLayout(player_frame)
         player_layout.setContentsMargins(10, 8, 10, 8)
         player_layout.setSpacing(6)
 
         player_hdr = QHBoxLayout()
-        lbl_player = QLabel("Player")
+        lbl_player = QLabel("Player-Timeline 01")
         lbl_player.setStyleSheet("color: #cbd5e1; font-weight: bold; font-size: 12px; border: none;")
         player_hdr.addWidget(lbl_player)
         player_hdr.addStretch(1)
 
-        self.btn_swap_backdrop = QPushButton("🖼 Swap Backdrop…")
+        self.btn_toggle_left_pane = QPushButton("◧")
+        self.btn_toggle_left_pane.setCheckable(True)
+        self.btn_toggle_left_pane.setChecked(True)
+        self.btn_toggle_left_pane.setFixedWidth(28)
+        self.btn_toggle_left_pane.setToolTip("Collapse or expand the Left Media/Effects Browser column.")
+        self.btn_toggle_left_pane.toggled.connect(lambda checked: self.left_frame.setVisible(checked))
+        player_hdr.addWidget(self.btn_toggle_left_pane)
+
+        self.btn_toggle_right_pane = QPushButton("◨")
+        self.btn_toggle_right_pane.setCheckable(True)
+        self.btn_toggle_right_pane.setChecked(True)
+        self.btn_toggle_right_pane.setFixedWidth(28)
+        self.btn_toggle_right_pane.setToolTip("Collapse or expand the Right Details & Clip Inspector column.")
+        self.btn_toggle_right_pane.toggled.connect(lambda checked: self.details_frame.setVisible(checked))
+        player_hdr.addWidget(self.btn_toggle_right_pane)
+
+        self.btn_toggle_bottom_dock = QPushButton("⬓")
+        self.btn_toggle_bottom_dock.setCheckable(True)
+        self.btn_toggle_bottom_dock.setChecked(True)
+        self.btn_toggle_bottom_dock.setFixedWidth(28)
+        self.btn_toggle_bottom_dock.setToolTip("Collapse or expand the Bottom Multi-Track Timeline Dock row.")
+        self.btn_toggle_bottom_dock.toggled.connect(lambda checked: self.timeline_dock.setVisible(checked))
+        player_hdr.addWidget(self.btn_toggle_bottom_dock)
+
+        self.btn_swap_backdrop = QPushButton("≡")
+        self.btn_swap_backdrop.setFixedWidth(28)
+        self.btn_swap_backdrop.setToolTip("Swap stage backdrop image or looping video clip.")
         self.btn_swap_backdrop.clicked.connect(self._on_swap_visual_asset)
         player_hdr.addWidget(self.btn_swap_backdrop)
         player_layout.addLayout(player_hdr)
@@ -1369,7 +1346,7 @@ class TimelineEditorPage(QWidget):
         self.stage_canvas = VideoStageCanvas(self)
         player_layout.addWidget(self.stage_canvas, stretch=1)
 
-        # Player Transport Bar (matches Screenshot 1 & 2)
+        # Player Transport Bar
         player_transport = QHBoxLayout()
         self.lbl_timecode = QLabel("00:00:00 / 00:00:00")
         self.lbl_timecode.setStyleSheet(
@@ -1401,11 +1378,11 @@ class TimelineEditorPage(QWidget):
         player_layout.addLayout(player_transport)
         upper_row.addWidget(player_frame, stretch=4)
 
-        # 3. Right Pane: Details & Clip Inspector (matches Screenshot 1 & 2!)
+        # 3. Right Pane: Details & Clip Inspector
         details_frame = QFrame()
         self.details_frame = details_frame
         details_frame.setStyleSheet(
-            "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 8px; }"
+            "QFrame { background-color: #12151e; border: 1px solid #1e293b; border-radius: 10px; }"
         )
         details_layout = QVBoxLayout(details_frame)
         details_layout.setContentsMargins(12, 8, 12, 8)
@@ -1417,6 +1394,23 @@ class TimelineEditorPage(QWidget):
 
         proj_meta_form = QFormLayout()
         proj_meta_form.setSpacing(4)
+
+        self.channel_combo = QComboBox()
+        self.channel_combo.setToolTip("Select the active YouTube channel profile.")
+        self.channel_combo.currentIndexChanged.connect(self._on_channel_changed)
+        proj_meta_form.addRow("Channel:", self.channel_combo)
+
+        self.project_combo = QComboBox()
+        self.project_combo.setToolTip("Select the production project to edit on the multi-track timeline.")
+        self.project_combo.currentIndexChanged.connect(self._on_project_changed)
+        proj_meta_form.addRow("Project:", self.project_combo)
+
+        self.aspect_combo = QComboBox()
+        self.aspect_combo.addItems(["16:9 Widescreen", "9:16 Vertical Short"])
+        self.aspect_combo.setToolTip("Switch the Player stage monitor between 16:9 YouTube and 9:16 Vertical Short.")
+        self.aspect_combo.currentIndexChanged.connect(self._sync_stage_canvas)
+        proj_meta_form.addRow("Ratio:", self.aspect_combo)
+
         self.lbl_detail_name = QLabel("—")
         self.lbl_detail_name.setStyleSheet("color: #f8fafc; font-weight: 600; border: none;")
         proj_meta_form.addRow("Name:", self.lbl_detail_name)
